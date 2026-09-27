@@ -1,0 +1,6 @@
+{
+  "name": "SpacePay - Plataforma de eBooks e Vídeos de Dicas",
+  "description": "Plataforma profissional para compra, venda e afiliação de eBooks e vídeos de dicas com integração NetShop (M-Pesa, mCash, Visa).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

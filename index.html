@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SpacePay — Venda de eBooks e Vídeos de Dicas</title>
+    <meta name="description" content="Plataforma profissional para compra, venda e afiliação de eBooks e vídeos de dicas com pagamentos seguros instantâneos (M-Pesa, mCash, Visa)." />
+    <meta property="og:title" content="SpacePay — Venda de eBooks e Vídeos de Dicas" />
+    <meta property="og:description" content="Plataforma profissional para compra, venda e afiliação de eBooks e vídeos de dicas com pagamentos seguros instantâneos (M-Pesa, mCash, Visa)." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // Suppress Vite HMR WebSocket and transient iframe network errors
+      (function () {
+        var isIgnorableError = function (str) {
+          if (!str) return false;
+          var s = String(str);
+          return (
+            s.indexOf('WebSocket') !== -1 ||
+            s.indexOf('websocket') !== -1 ||
+            s.indexOf('closed without opened') !== -1 ||
+            s.indexOf('failed to connect to websocket') !== -1 ||
+            s.indexOf('failed to connect') !== -1 ||
+            s.indexOf('Failed to fetch') !== -1 ||
+            s.indexOf('fetch failed') !== -1 ||
+            s.indexOf('NetworkError') !== -1
+          );
+        };
+
+        var origError = console.error;
+        console.error = function () {
+          for (var i = 0; i < arguments.length; i++) {
+            var arg = arguments[i];
+            var msg = (arg && (arg.message || arg.stack || '' + arg)) || '';
+            if (isIgnorableError(msg)) {
+              return;
+            }
+          }
+          return origError.apply(console, arguments);
+        };
+
+        var origWarn = console.warn;
+        console.warn = function () {
+          for (var i = 0; i < arguments.length; i++) {
+            var arg = arguments[i];
+            var msg = (arg && (arg.message || arg.stack || '' + arg)) || '';
+            if (isIgnorableError(msg)) {
+              return;
+            }
+          }
+          return origWarn.apply(console, arguments);
+        };
+
+        window.addEventListener('unhandledrejection', function (event) {
+          var reason = event.reason;
+          var msg = (reason && (reason.message || reason.stack || String(reason))) || '';
+          if (isIgnorableError(msg)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('error', function (event) {
+          var msg = (event.message || event.filename || '') + '';
+          if (isIgnorableError(msg)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-emerald-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
