@@ -61,7 +61,8 @@ export class NetShopClient {
 
   // Validate incoming webhook payload with the configured secret
   verifyWebhookSignature(payload: string | Buffer, signatureHeader: string | undefined): boolean {
-    if (!this.config.webhookSecret) {
+    const configuredSecret = (this.config.webhookSecret || '').trim();
+    if (!configuredSecret) {
       return true; // permissive if secret not yet configured
     }
 
@@ -69,20 +70,35 @@ export class NetShopClient {
       return false;
     }
 
-    try {
-      const hmac = crypto.createHmac('sha256', this.config.webhookSecret);
-      const computedSignature = hmac.update(payload).digest('hex');
-      
-      const sigBuf = Buffer.from(signatureHeader, 'utf-8');
-      const compBuf = Buffer.from(computedSignature, 'utf-8');
-      
-      if (sigBuf.length !== compBuf.length) {
-        return signatureHeader === this.config.webhookSecret;
-      }
-      return crypto.timingSafeEqual(sigBuf, compBuf);
-    } catch {
-      return signatureHeader === this.config.webhookSecret;
+    const cleanHeader = signatureHeader.trim();
+
+    // 1. Direct secret / token match
+    if (cleanHeader === configuredSecret) {
+      return true;
     }
+
+    // 2. HMAC-SHA256 comparison (strip 'sha256=' prefix if present)
+    const normalizedHeader = cleanHeader.replace(/^sha256=/i, '');
+
+    try {
+      const hmacHex = crypto.createHmac('sha256', configuredSecret).update(payload).digest('hex');
+      const hmacBase64 = crypto.createHmac('sha256', configuredSecret).update(payload).digest('base64');
+
+      if (normalizedHeader.toLowerCase() === hmacHex.toLowerCase() || cleanHeader === hmacBase64) {
+        return true;
+      }
+
+      // Timing safe comparison for hex
+      const sigBuf = Buffer.from(normalizedHeader.toLowerCase(), 'utf-8');
+      const compBuf = Buffer.from(hmacHex.toLowerCase(), 'utf-8');
+      if (sigBuf.length === compBuf.length && crypto.timingSafeEqual(sigBuf, compBuf)) {
+        return true;
+      }
+    } catch {
+      // fallback to token match
+    }
+
+    return false;
   }
 
   // Ping test connection to official NetShop API

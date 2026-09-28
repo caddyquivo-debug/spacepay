@@ -524,15 +524,13 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
             <Sparkles className="w-4 h-4 text-emerald-400" />
             Assistente IA de Afiliados
           </button>
-          {isAdmin && (
-            <button
-              onClick={() => navigate('/criar-produto')}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
-            >
-              <PlusCircle className="w-4 h-4" />
-              Cadastrar Novo Produto
-            </button>
-          )}
+          <button
+            onClick={() => navigate('/criar-produto')}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer shadow-sm"
+          >
+            <PlusCircle className="w-4 h-4" />
+            Vender Infoproduto (Taxa 10%)
+          </button>
         </div>
       </div>
 
@@ -547,19 +545,15 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
             icon: Share2,
             badge: 'Ganhar Comissões',
           },
+          {
+            id: 'minhas-vendas',
+            label: `Minhas Vendas (${salesData.sales.length})`,
+            icon: PackageCheck,
+            badge: 'Taxa 10%',
+          },
+          { id: 'meus-produtos', label: `Meus Produtos (${myProducts.length})`, icon: PlusCircle },
           { id: 'carteira', label: 'Minha Carteira', icon: Wallet },
           { id: 'levantamentos', label: 'Levantamentos', icon: Wallet },
-          ...(isAdmin
-            ? [
-                {
-                  id: 'minhas-vendas',
-                  label: `Vendas da Plataforma (${salesData.sales.length})`,
-                  icon: PackageCheck,
-                  badge: 'Admin',
-                },
-                { id: 'meus-produtos', label: `Produtos (${myProducts.length})`, icon: PlusCircle },
-              ]
-            : []),
           {
             id: 'assistente-ia',
             label: 'Assistente IA Gemini',
@@ -1139,6 +1133,7 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
                 <span className="text-lg font-extrabold text-slate-700 tabular-nums">
                   - {salesData.totalPlatformFees.toLocaleString('pt-MZ')} MT
                 </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">Creditada automaticamente à conta oficial</span>
               </div>
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-[10px] text-slate-500 font-bold uppercase block">Comissões Afiliados</span>

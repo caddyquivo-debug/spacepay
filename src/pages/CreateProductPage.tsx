@@ -122,31 +122,31 @@ export const CreateProductPage: React.FC<CreateProductPageProps> = ({ navigate }
     }
   };
 
-  if (!user || !isAdmin) {
+  if (!user) {
     return (
       <div className="max-w-md mx-auto px-4 py-20 text-center space-y-4">
-        <div className="w-14 h-14 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+        <div className="w-14 h-14 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
           <ShieldCheck className="w-7 h-7" />
         </div>
-        <h2 className="text-xl font-bold text-slate-900">Apenas a Administração Publica Produtos</h2>
+        <h2 className="text-xl font-bold text-slate-900">Venda seus Infoprodutos no SpacePay</h2>
         <p className="text-xs text-slate-500 leading-relaxed">
-          O cliente não pode vender produtos no SpacePay. Todos os eBooks e vídeos são de curadoria exclusiva da plataforma.
+          Cadastre seu eBook (PDF) ou Vídeo de Dicas Práticas e comece a vender em todo Moçambique com pagamentos M-Pesa e mCash.
         </p>
-        <p className="text-xs text-slate-600 leading-relaxed">
-          Como cliente, você pode adquirir qualquer infoproduto no catálogo e participar do <strong>Programa de Afiliados</strong> para faturar comissões por cada indicação.
+        <p className="text-xs text-emerald-800 font-semibold bg-emerald-50 border border-emerald-200 p-3 rounded-xl leading-relaxed">
+          Taxa transparente da plataforma: 10% cobrada automaticamente sobre o valor de cada venda confirmada.
         </p>
         <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
           <button
-            onClick={() => navigate('/catalogo')}
+            onClick={() => navigate('/login')}
             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
           >
-            Explorar Catálogo
+            Entrar na Minha Conta
           </button>
           <button
-            onClick={() => navigate('/afiliados')}
+            onClick={() => navigate('/criar-conta')}
             className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
           >
-            Área de Afiliados
+            Criar Nova Conta Grátis
           </button>
         </div>
       </div>
@@ -165,13 +165,13 @@ export const CreateProductPage: React.FC<CreateProductPageProps> = ({ navigate }
       <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-10 shadow-sm space-y-8">
         <div>
           <span className="text-xs font-bold text-emerald-600 uppercase tracking-wide">
-            Novo Produto SpacePay
+            Publicação de Infoproduto
           </span>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">
             Cadastrar eBook ou Vídeo de Dicas
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Preencha os detalhes do seu material. Após o envio, o produto ficará com status "Em análise" até a verificação do administrador.
+            Preencha os detalhes do seu material. A taxa de 10% do SpacePay é cobrada automaticamente para a administração em cada venda confirmada.
           </p>
         </div>
 

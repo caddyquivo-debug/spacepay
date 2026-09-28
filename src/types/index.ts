@@ -69,6 +69,7 @@ export interface Order {
   sellerShare: number;
   netShopTransactionId?: string;
   netShopReference?: string;
+  operatorReceipt?: string;
   createdAt: string;
   paidAt?: string;
 }

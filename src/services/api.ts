@@ -467,6 +467,15 @@ export const api = {
     return parseJsonResponse(res, 'Erro ao testar conectividade com NetShop.');
   },
 
+  async testAdminWebhook(orderId?: string): Promise<{ success: boolean; message: string; order?: Order }> {
+    const res = await httpFetch('/api/admin/netshop/test-webhook', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ orderId }),
+    });
+    return parseJsonResponse(res, 'Erro ao testar processamento do webhook.');
+  },
+
   // --- GEMINI AI ASSISTANT ---
   async sendAiChat(payload: {
     messages: { role: 'user' | 'model'; content: string }[];

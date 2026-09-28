@@ -18,9 +18,24 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// JSON and urlencoded parser with generous limit for PDF and video uploads
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+// JSON and urlencoded parser with generous limit for PDF and video uploads, capturing rawBody for webhook HMAC
+app.use(
+  express.json({
+    limit: '100mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString('utf-8');
+    },
+  })
+);
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '100mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString('utf-8');
+    },
+  })
+);
 
 // Static uploads serving for direct assets
 app.use('/uploads', express.static(uploadsDir));

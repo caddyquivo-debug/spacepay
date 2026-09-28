@@ -1,6 +1,28 @@
 {
   "products": [
     {
+      "title": "Guia Prático de Negócios em Maputo",
+      "description": "Como estruturar um negócio rentável no mercado moçambicano.",
+      "type": "ebook",
+      "price": 500,
+      "affiliateCommission": 50,
+      "coverUrl": "/src/assets/images/product_ebook_cv_1790278048991.jpg",
+      "fileUrl": "/assets/ebooks/guia-maputo.pdf",
+      "videoUrl": "",
+      "fileName": "guia-maputo.pdf",
+      "status": "approved",
+      "sellerId": "usr-mukt58ab-3s9m",
+      "sellerName": "Vendedor Teste Moçambique",
+      "sellerEmail": "vendedor.teste@gmail.com",
+      "isPlatformProduct": false,
+      "allowAffiliates": true,
+      "previewDicas": [],
+      "id": "prod-mukt58am-au1p",
+      "slug": "guia-pratico-de-negocios-em-maputo-6606",
+      "salesCount": 1,
+      "createdAt": "2026-09-28T05:29:16.606Z"
+    },
+    {
       "id": "prod-cv-pro",
       "slug": "como-fazer-um-cv-profissional",
       "title": "Como Fazer um CV Profissional",
@@ -185,10 +207,10 @@
       "phone": "+258 835373674",
       "createdAt": "2025-01-01T00:00:00.000Z",
       "wallet": {
-        "availableBalance": 26600,
+        "availableBalance": 26650,
         "pendingBalance": 0,
-        "totalEarned": 37800,
-        "totalSales": 396,
+        "totalEarned": 37850,
+        "totalSales": 397,
         "totalCommissions": 4800
       }
     },
@@ -251,9 +273,58 @@
         "totalSales": 0,
         "totalCommissions": 0
       }
+    },
+    {
+      "id": "usr-mukt58ab-3s9m",
+      "name": "Vendedor Teste Moçambique",
+      "email": "vendedor.teste@gmail.com",
+      "role": "user",
+      "phone": "+258 841234567",
+      "createdAt": "2026-09-28T05:29:16.595Z",
+      "wallet": {
+        "availableBalance": 450,
+        "pendingBalance": 0,
+        "totalEarned": 450,
+        "totalSales": 1,
+        "totalCommissions": 0
+      }
+    },
+    {
+      "id": "usr-mukt594f-eiuq",
+      "name": "Cliente Comprador",
+      "email": "cliente.comprador@gmail.com",
+      "role": "user",
+      "phone": "+258 849876543",
+      "createdAt": "2026-09-28T05:29:17.679Z",
+      "wallet": {
+        "availableBalance": 0,
+        "pendingBalance": 0,
+        "totalEarned": 0,
+        "totalSales": 0,
+        "totalCommissions": 0
+      }
     }
   ],
   "orders": [
+    {
+      "productId": "prod-mukt58am-au1p",
+      "productTitle": "Guia Prático de Negócios em Maputo",
+      "productType": "ebook",
+      "buyerEmail": "cliente.comprador@gmail.com",
+      "buyerName": "Cliente Comprador",
+      "buyerPhone": "+258 849876543",
+      "amount": 500,
+      "paymentMethod": "mpesa",
+      "affiliateCommission": 0,
+      "platformFee": 50,
+      "sellerShare": 450,
+      "id": "ord-1790573356614-jzo",
+      "status": "completed",
+      "createdAt": "2026-09-28T05:29:16.614Z",
+      "netShopReference": "REF-PAY-1790573357679",
+      "netShopTransactionId": "TX-TEST-1790573357679",
+      "paidAt": "2026-09-28T05:29:17.679Z"
+    },
     {
       "productId": "prod-marketing-local",
       "productTitle": "Marketing Digital para Negócios Locais",
@@ -8105,6 +8176,28 @@
       "netAmount": 100,
       "description": "Reembolso de levantamento rejeitado: Saldo insuficiente na sua Carteira Comercial NetShop (404273). Available: 0.00 MZN. É necessário acumular vendas reais no gateway ou recarregar a carteira comercial para viabilizar transferências automáticas ao M-Pesa.",
       "createdAt": "2026-09-27T19:53:08.081Z"
+    },
+    {
+      "id": "tx-1790573357679-sel",
+      "userId": "usr-mukt58ab-3s9m",
+      "orderId": "ord-1790573356614-jzo",
+      "type": "sale_earning",
+      "grossAmount": 500,
+      "feeAmount": 50,
+      "netAmount": 450,
+      "description": "Venda do seu eBook: Guia Prático de Negócios em Maputo (Bruto: 500 MT | Taxa SpacePay 10%: -50 MT cobrada para administração | Líquido Recebido: +450 MT)",
+      "createdAt": "2026-09-28T05:29:17.679Z"
+    },
+    {
+      "id": "tx-1790573357679-adm",
+      "userId": "admin-caddy",
+      "orderId": "ord-1790573356614-jzo",
+      "type": "platform_fee",
+      "grossAmount": 500,
+      "feeAmount": 0,
+      "netAmount": 50,
+      "description": "Taxa de 10% SpacePay cobrada automaticamente (Venda por Vendedor Teste Moçambique): Guia Prático de Negócios em Maputo (Bruto: 500 MT -> Taxa 10%: +50 MT)",
+      "createdAt": "2026-09-28T05:29:17.679Z"
     }
   ],
   "withdrawals": [
@@ -8220,6 +8313,7 @@
     "TX-TEST-1790279531121",
     "TX-TEST-1790321740996",
     "TX-PIN-1790322920011",
-    "TX-PIN-1790323552923"
+    "TX-PIN-1790323552923",
+    "TX-TEST-1790573357679"
   ]
 }

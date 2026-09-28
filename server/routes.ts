@@ -318,14 +318,7 @@ apiRouter.get('/products/:id/download', (req: Request, res: Response) => {
 apiRouter.post('/products', (req, res) => {
   const user = getUserFromHeader(req);
   if (!user) {
-    return res.status(401).json({ error: 'Faça login para continuar.' });
-  }
-
-  // Clients cannot sell. Only admin can publish products on SpacePay
-  if (user.role !== 'admin' && user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
-    return res.status(403).json({
-      error: 'A publicação e venda de produtos no SpacePay é exclusiva da administração da plataforma. Clientes não podem vender produtos.'
-    });
+    return res.status(401).json({ error: 'Faça login para cadastrar seu produto para venda.' });
   }
 
   const {
@@ -375,7 +368,7 @@ apiRouter.post('/products', (req, res) => {
     fileName: fileName || undefined,
     fileSize: fileSize || undefined,
     fileSizeFormatted: fileSizeFormatted || undefined,
-    status: isAdmin ? 'approved' : 'pending_approval',
+    status: 'approved',
     sellerId: user.id,
     sellerName: user.name,
     sellerEmail: user.email,
@@ -386,9 +379,7 @@ apiRouter.post('/products', (req, res) => {
 
   res.status(201).json({
     product: newProduct,
-    message: isAdmin
-      ? 'Produto cadastrado e ativo na loja imediatamente.'
-      : 'Produto enviado com sucesso! Está em análise pelo administrador e será ativado após aprovação.',
+    message: 'Produto cadastrado e publicado com sucesso! Já está ativo na loja para venda e afiliações.',
   });
 });
 
@@ -539,52 +530,204 @@ apiRouter.post('/orders/:id/verify', async (req, res) => {
 });
 
 // ==========================================
-// 4. NETSHOP WEBHOOK
+// 4. NETSHOP WEBHOOK (M-Pesa / mCash Callbacks)
 // ==========================================
 
+// GET ping check for gateway URL validation
+apiRouter.get('/webhooks/netshop', (_req, res) => {
+  res.json({
+    status: 'online',
+    service: 'SpacePay NetShop Payment Webhook Listener',
+    timestamp: new Date().toISOString(),
+    supportedMethods: ['mpesa', 'mcash', 'card'],
+  });
+});
+
 apiRouter.post('/webhooks/netshop', (req, res) => {
-  console.log('[NetShop Webhook Received]:', JSON.stringify(req.body));
+  const timestamp = new Date().toISOString();
+  console.log(`[NetShop Webhook ${timestamp}] Payload recebido:`, JSON.stringify(req.body));
 
-  const signature = req.headers['x-netshop-signature'] as string ||
-                    req.headers['x-webhook-secret'] as string ||
-                    req.query.secret as string;
+  // 1. Signature & Secret Verification
+  const signature = (
+    (req.headers['x-netshop-signature'] as string) ||
+    (req.headers['x-webhook-signature'] as string) ||
+    (req.headers['x-signature'] as string) ||
+    (req.headers['x-hub-signature-256'] as string) ||
+    (req.headers['x-webhook-secret'] as string) ||
+    (req.headers['authorization']?.startsWith('Bearer ') ? req.headers['authorization'].slice(7) : undefined) ||
+    (req.query.secret as string) ||
+    ''
+  ).trim();
 
-  const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+  // Use rawBody captured before JSON parsing for byte-exact HMAC matching, fallback to JSON.stringify
+  const rawBody = (req as any).rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
 
-  // Validate webhook secret
-  const isValid = netShopClient.verifyWebhookSignature(rawBody, signature);
-  if (!isValid && db.getNetShopConfig().webhookSecret) {
-    console.warn('[NetShop Webhook] Assinatura inválida ou segredo incorreto.');
-    return res.status(401).json({ error: 'Assinatura do webhook inválida.' });
+  const config = db.getNetShopConfig();
+  if (config.webhookSecret && config.webhookSecret.trim()) {
+    const isValid = netShopClient.verifyWebhookSignature(rawBody, signature);
+    if (!isValid) {
+      console.warn('[NetShop Webhook] Assinatura inválida ou segredo incorreto. Cabeçalho:', signature);
+      return res.status(401).json({
+        success: false,
+        error: 'Assinatura do webhook inválida. Acesso não autorizado.',
+      });
+    }
   }
 
+  // 2. Extract Data from Payload (supports all NetShop event formats)
   const payload = req.body || {};
   const data = payload.data || payload;
 
-  const targetOrderId = data.metadata?.order_id || data.order_id || data.orderId || payload.order_id || payload.orderId;
-  const targetTxId = data.id || data.transaction_id || data.transactionId;
-  const targetRef = data.reference || payload.reference;
-  const statusStr = (data.status || payload.status || payload.event || '').toLowerCase();
+  const targetOrderId = (
+    data.metadata?.order_id ||
+    data.metadata?.orderId ||
+    data.order_id ||
+    data.orderId ||
+    data.client_reference ||
+    data.clientReference ||
+    payload.order_id ||
+    payload.orderId ||
+    payload.client_reference ||
+    payload.clientReference ||
+    ''
+  ).toString().trim();
 
-  const isCompleted = statusStr.includes('paid') || statusStr.includes('success') || statusStr.includes('completed') || statusStr.includes('charge.paid');
+  const targetTxId = (
+    data.id ||
+    data.transaction_id ||
+    data.transactionId ||
+    data.charge_id ||
+    data.payment_id ||
+    payload.id ||
+    payload.transaction_id ||
+    payload.charge_id ||
+    ''
+  ).toString().trim();
 
-  if (isCompleted) {
-    // If we have orderId directly:
-    if (targetOrderId) {
-      const result = db.completeOrder(targetOrderId, targetTxId, targetRef);
-      return res.json(result);
-    }
-    // Or if we have reference, find order by reference:
-    if (targetRef) {
-      const matching = db.getAllOrders().find(o => o.netShopReference === targetRef);
-      if (matching) {
-        const result = db.completeOrder(matching.id, targetTxId, targetRef);
-        return res.json(result);
-      }
-    }
+  const targetRef = (
+    data.reference ||
+    payload.reference ||
+    data.ref ||
+    payload.ref ||
+    data.transaction_reference ||
+    ''
+  ).toString().trim();
+
+  const operatorReceipt = (
+    data.receipt ||
+    data.mpesa_receipt ||
+    data.provider_receipt ||
+    data.reference_number ||
+    payload.receipt ||
+    payload.mpesa_receipt ||
+    ''
+  ).toString().trim();
+
+  const statusStr = String(data.status || payload.status || payload.event || data.event || data.state || '').toLowerCase();
+
+  const isCompleted = (
+    statusStr.includes('paid') ||
+    statusStr.includes('success') ||
+    statusStr.includes('completed') ||
+    statusStr.includes('approved') ||
+    statusStr.includes('charge.paid') ||
+    statusStr.includes('payment.paid')
+  );
+
+  const isFailed = (
+    statusStr.includes('failed') ||
+    statusStr.includes('cancelled') ||
+    statusStr.includes('canceled') ||
+    statusStr.includes('rejected') ||
+    statusStr.includes('declined') ||
+    statusStr.includes('expired')
+  );
+
+  // 3. Locate Order in SpacePay Database
+  let order: Order | undefined;
+  if (targetOrderId) {
+    order = db.getOrderById(targetOrderId) || db.getOrderByReference(targetOrderId);
+  }
+  if (!order && targetRef) {
+    order = db.getOrderByReference(targetRef);
+  }
+  if (!order && targetTxId) {
+    order = db.getOrderByReference(targetTxId);
+  }
+  if (!order && (targetRef || targetOrderId)) {
+    const all = db.getAllOrders();
+    order = all.find(o =>
+      (targetRef && (o.id === targetRef || o.netShopReference === targetRef)) ||
+      (targetOrderId && (o.id === targetOrderId || o.netShopReference === targetOrderId))
+    );
   }
 
-  res.json({ message: 'Evento do webhook recebido com status: ' + statusStr });
+  if (!order) {
+    console.warn(`[NetShop Webhook]: Nenhum pedido encontrado para orderId='${targetOrderId}', ref='${targetRef}', txId='${targetTxId}'.`);
+    return res.status(404).json({
+      success: false,
+      error: 'Pedido não localizado no SpacePay.',
+      targetOrderId,
+      targetRef,
+      targetTxId,
+    });
+  }
+
+  // 4. Process Status & Execute Database Changes
+  if (isCompleted) {
+    // Executes idempotent order completion:
+    // - Deducts 10% SpacePay fee
+    // - Credits 10% fee directly to admin wallet (caddyquivo@gmail.com)
+    // - Credits affiliate commission (if referred)
+    // - Credits seller net share (if user created product)
+    // - Persists order.status = 'completed' and receipt in .data/spacepay_db.json
+    const result = db.completeOrder(order.id, targetTxId, targetRef, operatorReceipt || undefined);
+
+    const freshOrder = result.order || order;
+    console.log(
+      `[NetShop Webhook Sucesso]: Pedido ${freshOrder.id} confirmado no banco de dados. ` +
+      `Bruto: ${freshOrder.amount} MT | Taxa 10% Admin: ${freshOrder.platformFee} MT | ` +
+      `Líquido Vendedor: ${freshOrder.sellerShare} MT | Recibo: ${freshOrder.operatorReceipt || 'Confirmado'}`
+    );
+
+    return res.status(200).json({
+      success: true,
+      processed: true,
+      orderId: freshOrder.id,
+      status: 'completed',
+      amount: freshOrder.amount,
+      platformFee: freshOrder.platformFee,
+      sellerShare: freshOrder.sellerShare,
+      affiliateCommission: freshOrder.affiliateCommission,
+      receipt: freshOrder.operatorReceipt || null,
+      alreadyProcessed: result.alreadyProcessed || false,
+      message: 'Notificação do NetShop processada com sucesso. Taxa de 10% retida para a administração.',
+    });
+  }
+
+  if (isFailed) {
+    if (order.status !== 'completed') {
+      order.status = 'failed';
+      db.saveData();
+    }
+    console.log(`[NetShop Webhook Falha]: Pedido ${order.id} marcado como ${order.status}.`);
+    return res.status(200).json({
+      success: true,
+      processed: true,
+      orderId: order.id,
+      status: 'failed',
+      message: 'Transação recusada ou cancelada pelo gateway.',
+    });
+  }
+
+  // Intermediate status (e.g. pending, processing)
+  res.status(200).json({
+    success: true,
+    processed: false,
+    orderId: order.id,
+    status: order.status,
+    message: `Notificação recebida com status intermediário: '${statusStr}'.`,
+  });
 });
 
 // Mobile Money USSD / Phone PIN confirmation endpoint
@@ -1066,6 +1209,46 @@ apiRouter.post('/admin/netshop', requireAdmin, (req, res) => {
 apiRouter.post('/admin/netshop/test', requireAdmin, async (req, res) => {
   const result = await netShopClient.testConnection();
   res.json(result);
+});
+
+// Admin Webhook Simulation & Testing Endpoint
+apiRouter.post('/admin/netshop/test-webhook', requireAdmin, (req, res) => {
+  const { orderId } = req.body;
+  let order = orderId ? (db.getOrderById(orderId) || db.getOrderByReference(orderId)) : db.getAllOrders().find(o => o.status === 'pending');
+
+  if (!order) {
+    const products = db.getProducts(true);
+    const prod = products[0];
+    order = db.createOrder({
+      productId: prod.id,
+      productTitle: prod.title,
+      productType: prod.type,
+      buyerEmail: 'cliente.teste.webhook@gmail.com',
+      buyerName: 'Cliente Teste Webhook',
+      buyerPhone: '+258 840001122',
+      amount: prod.price,
+      paymentMethod: 'mpesa',
+      affiliateId: undefined,
+    });
+  }
+
+  const simulatedTxId = `TX-HOOK-${Date.now()}`;
+  const simulatedReceipt = `MPESA-REC-${Date.now().toString().slice(-6)}`;
+  const result = db.completeOrder(
+    order.id,
+    simulatedTxId,
+    order.netShopReference || `REF-${order.id}`,
+    simulatedReceipt
+  );
+
+  res.json({
+    success: true,
+    message: `Webhook de teste executado com sucesso no banco de dados. Pedido ${order.id} concluído!`,
+    order: result.order || order,
+    platformFee: result.order?.platformFee,
+    sellerShare: result.order?.sellerShare,
+    adminEmail: ADMIN_EMAIL,
+  });
 });
 
 // ==========================================

@@ -146,6 +146,8 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
   const [baseUrl, setBaseUrl] = useState('https://www.netshop.co.mz/api/v1');
   const [netShopTesting, setNetShopTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
+  const [webhookTesting, setWebhookTesting] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [adminLoadError, setAdminLoadError] = useState<string | null>(null);
 
   // Admin New Product Modal
@@ -307,6 +309,27 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
       setTestResult({ success: false, message: e.message });
     } finally {
       setNetShopTesting(false);
+    }
+  };
+
+  const handleTestWebhook = async () => {
+    setWebhookTesting(true);
+    setWebhookTestResult(null);
+    try {
+      const res = await api.testAdminWebhook();
+      setWebhookTestResult({
+        success: true,
+        message: res.message || 'Callback de Webhook executado com sucesso! Taxa de 10% creditada ao administrador.',
+      });
+      const freshStats = await api.getAdminDashboard();
+      setStats(freshStats.stats);
+    } catch (e: any) {
+      setWebhookTestResult({
+        success: false,
+        message: e.message || 'Falha ao testar recebimento de webhook.',
+      });
+    } finally {
+      setWebhookTesting(false);
     }
   };
 
@@ -1436,6 +1459,38 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
                 {copiedWebhook ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 <span>{copiedWebhook ? 'Copiado para a Área de Transferência' : 'Copiar URL do Webhook'}</span>
               </button>
+
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleTestWebhook}
+                  disabled={webhookTesting}
+                  className="w-full py-2 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors text-xs"
+                >
+                  <Zap className="w-3.5 h-3.5 fill-current text-emerald-600" />
+                  <span>{webhookTesting ? 'Executando Teste...' : 'Testar Recebimento de Webhook'}</span>
+                </button>
+              </div>
+
+              {webhookTestResult && (
+                <div
+                  className={`p-3 rounded-xl text-xs space-y-1 ${
+                    webhookTestResult.success
+                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-900 border border-rose-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold">
+                    {webhookTestResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{webhookTestResult.success ? 'Webhook Confirmado com Sucesso' : 'Falha no Webhook'}</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed opacity-90">{webhookTestResult.message}</p>
+                </div>
+              )}
             </div>
 
             {/* Security checklist */}

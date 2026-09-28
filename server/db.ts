@@ -519,22 +519,42 @@ class Database {
     return this.data.orders;
   }
 
+  getOrderByReference(referenceOrId: string): Order | undefined {
+    if (!referenceOrId) return undefined;
+    const clean = referenceOrId.trim().toLowerCase();
+    return this.data.orders.find(o =>
+      o.id.toLowerCase() === clean ||
+      (o.netShopReference && o.netShopReference.toLowerCase() === clean) ||
+      (o.netShopTransactionId && o.netShopTransactionId.toLowerCase() === clean)
+    );
+  }
+
   // IDEMPOTENT ORDER COMPLETION & COMMISSION DISTRIBUTION
   // Exactly implements the 10% fee and affiliate commission calculations
-  completeOrder(orderId: string, netShopTransactionId?: string, netShopReference?: string): { success: boolean; order?: Order; message: string } {
-    const order = this.getOrderById(orderId);
+  completeOrder(
+    orderId: string,
+    netShopTransactionId?: string,
+    netShopReference?: string,
+    operatorReceipt?: string
+  ): { success: boolean; order?: Order; message: string; alreadyProcessed?: boolean } {
+    // Look up order by ID or reference
+    const order = this.getOrderById(orderId) || this.getOrderByReference(orderId);
     if (!order) {
       return { success: false, message: 'Pedido não encontrado.' };
     }
 
     // Idempotency check: if already completed, do not double-credit
     if (order.status === 'completed') {
-      return { success: true, order, message: 'Pedido já foi processado anteriormente.' };
+      if (operatorReceipt && !order.operatorReceipt) {
+        order.operatorReceipt = operatorReceipt;
+        this.saveData();
+      }
+      return { success: true, order, alreadyProcessed: true, message: 'Pedido já foi processado anteriormente.' };
     }
 
-    const txKey = netShopTransactionId || netShopReference || orderId;
+    const txKey = netShopTransactionId || netShopReference || order.id;
     if (this.data.processedTransactions.includes(txKey)) {
-      return { success: true, order, message: 'Transação NetShop já registrada.' };
+      return { success: true, order, alreadyProcessed: true, message: 'Transação NetShop já registrada.' };
     }
 
     const product = this.getProductByIdOrSlug(order.productId);
@@ -579,6 +599,7 @@ class Database {
     order.sellerShare = sellerShare;
     if (netShopTransactionId) order.netShopTransactionId = netShopTransactionId;
     if (netShopReference) order.netShopReference = netShopReference;
+    if (operatorReceipt) order.operatorReceipt = operatorReceipt;
 
     // Record idempotency
     this.data.processedTransactions.push(txKey);
@@ -610,7 +631,10 @@ class Database {
 
     // 2. Credit Seller if user-created product
     if (!product.isPlatformProduct && sellerShare > 0) {
-      const seller = this.getUserById(product.sellerId);
+      let seller = this.getUserById(product.sellerId);
+      if (!seller && product.sellerEmail) {
+        seller = this.getUserByEmail(product.sellerEmail);
+      }
       if (seller) {
         seller.wallet.availableBalance += sellerShare;
         seller.wallet.totalEarned += sellerShare;
@@ -624,16 +648,19 @@ class Database {
           grossAmount: gross,
           feeAmount: platformFee + affiliateCommission,
           netAmount: sellerShare,
-          description: `Venda do seu ${product.type === 'ebook' ? 'eBook' : 'vídeo'}: ${product.title} (Taxa SpacePay 10%: ${platformFee} MT${affiliateCommission > 0 ? `, Afiliado: ${affiliateCommission} MT` : ''})`,
+          description: `Venda do seu ${product.type === 'ebook' ? 'eBook' : 'vídeo'}: ${product.title} (Bruto: ${gross} MT | Taxa SpacePay 10%: -${platformFee} MT cobrada para administração${affiliateCommission > 0 ? ` | Afiliado: -${affiliateCommission} MT` : ''} | Líquido Recebido: +${sellerShare} MT)`,
           createdAt: now,
         });
       }
     }
 
-    // 3. Credit Admin / Platform wallet (Taxa SpacePay)
-    const adminUser = this.getUserByEmail(ADMIN_EMAIL);
+    // 3. Credit Admin / Platform wallet (Taxa SpacePay de 10% cobrada automaticamente)
+    let adminUser = this.getUserByEmail(ADMIN_EMAIL);
+    if (!adminUser) {
+      adminUser = this.createUser('Caddy Quivo (Administrador)', ADMIN_EMAIL, '+258 835373674');
+    }
     if (adminUser) {
-      const adminNet = product.isPlatformProduct ? platformFee : platformFee;
+      const adminNet = platformFee;
       adminUser.wallet.availableBalance += adminNet;
       adminUser.wallet.totalEarned += adminNet;
       adminUser.wallet.totalSales += 1;
@@ -648,7 +675,7 @@ class Database {
         netAmount: adminNet,
         description: product.isPlatformProduct
           ? `Venda de produto próprio da plataforma: ${product.title}`
-          : `Taxa de 10% SpacePay sobre produto de usuário: ${product.title}`,
+          : `Taxa de 10% SpacePay cobrada automaticamente (Venda por ${product.sellerName || product.sellerEmail}): ${product.title} (Bruto: ${gross} MT -> Taxa 10%: +${adminNet} MT)`,
         createdAt: now,
       });
     }
