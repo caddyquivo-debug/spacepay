@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../services/api.ts';
+import { firestoreProducts } from '../lib/firestoreProducts.ts';
 import {
   Product,
   Order,
@@ -55,8 +56,11 @@ import {
   Eye,
   Info,
   ShieldCheck,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { SpacePayAiAssistant } from '../components/SpacePayAiAssistant.tsx';
+import { FileUploadDropzone } from '../components/FileUploadDropzone.tsx';
 
 interface UserDashboardPageProps {
   initialTab?: string;
@@ -203,7 +207,6 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
   const [salesChartMetric, setSalesChartMetric] = useState<'all' | 'revenue' | 'volume'>('all');
   const [salesPeriod, setSalesPeriod] = useState<'6m' | '30d'>('6m');
   const [salesChartType, setSalesChartType] = useState<'area' | 'bar'>('area');
-  const [showSalesBenchmark, setShowSalesBenchmark] = useState(false);
 
   // Recharts interactive states for Affiliate Performance
   const [affiliateChartFilter, setAffiliateChartFilter] = useState<'all' | 'ebook' | 'video'>('all');
@@ -211,37 +214,51 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
   // AI Assistant Drawer state
   const [isAiDrawerOpen, setIsAiDrawerOpen] = useState(false);
 
-  // --- MEMOIZED DATA FOR SELLER SALES CHARTS ---
+  // Product Edit & Delete States
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editFileName, setEditFileName] = useState('');
+  const [editFileSize, setEditFileSize] = useState<number | undefined>(undefined);
+  const [editFileSizeFormatted, setEditFileSizeFormatted] = useState('');
+  const [editFileUrl, setEditFileUrl] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editSuccessMsg, setEditSuccessMsg] = useState<string | null>(null);
+
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // --- MEMOIZED DATA FOR SELLER SALES CHARTS (100% REAL) ---
   const sellerMonthlyData = useMemo(() => {
-    const hasRealSales = salesData.sales && salesData.sales.length > 0;
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const monthMap = new Map<string, {
+      month: string;
+      faturamento: number;
+      liquido: number;
+      taxas: number;
+      comissoes: number;
+      vendas: number;
+    }>();
 
-    if (hasRealSales && !showSalesBenchmark) {
-      const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-      const monthMap = new Map<string, {
-        month: string;
-        faturamento: number;
-        liquido: number;
-        taxas: number;
-        comissoes: number;
-        vendas: number;
-      }>();
+    // Pre-fill continuous timeline for last 6 months with real zeros
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
+      monthMap.set(key, {
+        month: label,
+        faturamento: 0,
+        liquido: 0,
+        taxas: 0,
+        comissoes: 0,
+        vendas: 0,
+      });
+    }
 
-      // Pre-fill continuous timeline for last 6 months
-      const now = new Date();
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
-        monthMap.set(key, {
-          month: label,
-          faturamento: 0,
-          liquido: 0,
-          taxas: 0,
-          comissoes: 0,
-          vendas: 0,
-        });
-      }
-
+    if (salesData.sales && salesData.sales.length > 0) {
       salesData.sales.forEach((order) => {
         const d = new Date(order.createdAt);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -268,35 +285,23 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
           });
         }
       });
-
-      return Array.from(monthMap.values());
     }
 
-    // Benchmark / Realistic Demonstration Data
-    return [
-      { month: 'Out/25', faturamento: 2400, liquido: 1920, taxas: 240, comissoes: 240, vendas: 8 },
-      { month: 'Nov/25', faturamento: 5600, liquido: 4480, taxas: 560, comissoes: 560, vendas: 18 },
-      { month: 'Dez/25', faturamento: 8900, liquido: 7120, taxas: 890, comissoes: 890, vendas: 29 },
-      { month: 'Jan/26', faturamento: 14200, liquido: 11360, taxas: 1420, comissoes: 1420, vendas: 46 },
-      { month: 'Fev/26', faturamento: 18500, liquido: 14800, taxas: 1850, comissoes: 1850, vendas: 60 },
-      { month: 'Mar/26', faturamento: 23600, liquido: 18880, taxas: 2360, comissoes: 2360, vendas: 77 },
-    ];
-  }, [salesData.sales, showSalesBenchmark]);
+    return Array.from(monthMap.values());
+  }, [salesData.sales]);
 
-  // Comparison of Sales by Product
+  // Comparison of Sales by Product (100% Real)
   const sellerProductComparisonData = useMemo(() => {
-    const hasRealSales = salesData.sales && salesData.sales.length > 0;
+    const prodMap = new Map<string, {
+      name: string;
+      tipo: string;
+      faturamento: number;
+      liquido: number;
+      comissoes: number;
+      vendas: number;
+    }>();
 
-    if (hasRealSales && !showSalesBenchmark) {
-      const prodMap = new Map<string, {
-        name: string;
-        tipo: string;
-        faturamento: number;
-        liquido: number;
-        comissoes: number;
-        vendas: number;
-      }>();
-
+    if (salesData.sales && salesData.sales.length > 0) {
       salesData.sales.forEach((order) => {
         const prodTitle = order.productTitle || 'Produto Digital';
         const key = order.productId || prodTitle;
@@ -321,19 +326,12 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
           });
         }
       });
-
-      return Array.from(prodMap.values());
     }
 
-    // Benchmark / Demo comparison
-    return [
-      { name: 'Como Fazer um CV Profissional', tipo: 'eBook', faturamento: 12500, liquido: 10000, comissoes: 1250, vendas: 42 },
-      { name: 'Dicas Rápidas de Finanças', tipo: 'Vídeo', faturamento: 8400, liquido: 6720, comissoes: 840, vendas: 28 },
-      { name: 'Guia de WhatsApp Marketing', tipo: 'eBook', faturamento: 6300, liquido: 5040, comissoes: 630, vendas: 21 },
-    ];
-  }, [salesData.sales, showSalesBenchmark]);
+    return Array.from(prodMap.values());
+  }, [salesData.sales]);
 
-  // --- MEMOIZED DATA FOR AFFILIATE COMMISSION CHARTS ---
+  // --- MEMOIZED DATA FOR AFFILIATE COMMISSION CHARTS (100% REAL) ---
   const affiliateChartData = useMemo(() => {
     let items = affiliateStats;
     if (affiliateChartFilter !== 'all') {
@@ -356,16 +354,7 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
       });
     }
 
-    // Benchmark affiliate stats for visualization
-    const demoItems = [
-      { name: 'Como Fazer um CV Pro', fullName: 'Como Fazer um CV Profissional', tipo: 'eBook', comissaoTotal: 2800, comissaoUnitaria: 100, vendas: 28, cliques: 185, taxaConversao: 15.1 },
-      { name: 'Dicas de Finanças MZ', fullName: 'Dicas Rápidas de Finanças Pessoais', tipo: 'Vídeo', comissaoTotal: 2100, comissaoUnitaria: 150, vendas: 14, cliques: 110, taxaConversao: 12.7 },
-      { name: 'WhatsApp Marketing MZ', fullName: 'Guia de Vendas Rápidas no WhatsApp', tipo: 'eBook', comissaoTotal: 1350, comissaoUnitaria: 90, vendas: 15, cliques: 95, taxaConversao: 15.8 },
-    ];
-
-    if (affiliateChartFilter === 'ebook') return demoItems.filter(i => i.tipo === 'eBook');
-    if (affiliateChartFilter === 'video') return demoItems.filter(i => i.tipo === 'Vídeo');
-    return demoItems;
+    return [];
   }, [affiliateStats, affiliateChartFilter]);
 
   // Context passed to Gemini AI
@@ -417,6 +406,104 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenEdit = (prod: Product) => {
+    setEditingProduct(prod);
+    setEditTitle(prod.title);
+    setEditDescription(prod.description);
+    setEditPrice(String(prod.price));
+    setEditFileName(prod.fileName || '');
+    setEditFileSize(prod.fileSize);
+    setEditFileSizeFormatted(prod.fileSizeFormatted || '');
+    setEditFileUrl(prod.fileUrl || prod.videoUrl || '');
+    setEditError(null);
+    setEditSuccessMsg(null);
+  };
+
+  const handleSaveProductEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    if (!editTitle.trim()) {
+      setEditError('O título do produto é obrigatório.');
+      return;
+    }
+    if (!editDescription.trim()) {
+      setEditError('A descrição do produto é obrigatória.');
+      return;
+    }
+    const numPrice = Number(editPrice);
+    if (isNaN(numPrice) || numPrice < 50) {
+      setEditError('O preço mínimo para comercialização é de 50 MT.');
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError(null);
+
+    try {
+      const updates: Partial<Product> = {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        price: numPrice,
+        fileName: editFileName || undefined,
+        fileSize: editFileSize || undefined,
+        fileSizeFormatted: editFileSizeFormatted || undefined,
+      };
+
+      if (editingProduct.type === 'ebook') {
+        updates.fileUrl = editFileUrl || editingProduct.fileUrl;
+      } else {
+        updates.videoUrl = editFileUrl || editingProduct.videoUrl;
+      }
+
+      const res = await api.updateMyProduct(editingProduct.id, updates);
+
+      // Sync update to Firestore
+      try {
+        await firestoreProducts.update(editingProduct.id, updates);
+      } catch (firestoreErr) {
+        console.warn('[Firestore Sync]: Could not update product in Firestore:', firestoreErr);
+      }
+
+      setMyProducts((prev) =>
+        prev.map((p) => (p.id === editingProduct.id ? res.product : p))
+      );
+
+      setEditSuccessMsg('Produto atualizado com sucesso no Firestore e na plataforma!');
+      setTimeout(() => {
+        setEditingProduct(null);
+        setEditSuccessMsg(null);
+      }, 1200);
+    } catch (err: any) {
+      setEditError(err.message || 'Erro ao salvar alterações no produto.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleConfirmDeleteProduct = async () => {
+    if (!deletingProduct) return;
+    setIsDeleting(true);
+
+    try {
+      await api.deleteMyProduct(deletingProduct.id);
+
+      // Sync deletion to Firestore
+      try {
+        await firestoreProducts.delete(deletingProduct.id);
+      } catch (firestoreErr) {
+        console.warn('[Firestore Sync]: Could not delete product in Firestore:', firestoreErr);
+      }
+
+      setMyProducts((prev) => prev.filter((p) => p.id !== deletingProduct.id));
+      setDeletingProduct(null);
+    } catch (err: any) {
+      alert(err.message || 'Erro ao excluir o produto.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -763,9 +850,12 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
                 <div key={ebook.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col justify-between">
                   <div>
                     <img
-                      src={ebook.coverUrl}
+                      src={ebook.coverUrl || '/src/assets/images/product_ebook_cv_1790278048991.jpg'}
                       alt={ebook.title}
                       className="w-full aspect-[4/3] object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/src/assets/images/product_ebook_cv_1790278048991.jpg';
+                      }}
                     />
                     <div className="p-4 space-y-2">
                       <span className="text-[10px] font-bold text-emerald-700 uppercase">eBook Liberado</span>
@@ -827,9 +917,12 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
                 <div key={vid.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col justify-between">
                   <div className="relative group cursor-pointer" onClick={() => setWatchingVideo(vid)}>
                     <img
-                      src={vid.coverUrl}
+                      src={vid.coverUrl || '/src/assets/images/product_video_financas_1790278058234.jpg'}
                       alt={vid.title}
                       className="w-full aspect-[4/3] object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/src/assets/images/product_video_financas_1790278058234.jpg';
+                      }}
                     />
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-colors">
                       <div className="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
@@ -1161,9 +1254,13 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
                   <h3 className="text-sm font-bold text-slate-900">
                     Desempenho de Vendas: Faturamento, Líquido e Volume
                   </h3>
-                  {salesData.sales.length === 0 && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
-                      Modo Demonstração / Projeção
+                  {salesData.sales.length === 0 ? (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      Sem vendas no período
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      100% Vendas Reais
                     </span>
                   )}
                 </div>
@@ -1428,17 +1525,28 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
       {/* TAB CONTENT: 6. MEUS PRODUTOS CRIADOS */}
       {activeTab === 'meus-produtos' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Seus Produtos Cadastrados</h2>
-              <p className="text-xs text-slate-500">Produtos criados por você para venda no SpacePay.</p>
+              <h2 className="text-lg font-bold text-slate-900">Seus Produtos para Venda Direta</h2>
+              <p className="text-xs text-slate-500">
+                Compartilhe seus links de pagamento SpacePay no WhatsApp, redes sociais ou outros sites.
+              </p>
             </div>
             <button
               onClick={() => navigate('/criar-produto')}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm self-start sm:self-auto"
             >
-              <PlusCircle className="w-4 h-4" /> Novo Produto
+              <PlusCircle className="w-4 h-4" /> Cadastrar Novo Produto
             </button>
+          </div>
+
+          <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-emerald-900 font-medium">
+              <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>
+                <strong>Regra de Cobrança SpacePay:</strong> Apenas <strong>10% de taxa da plataforma</strong> é cobrada automaticamente por venda concluída na sua conta. Você recebe 90% líquidos diretamente na carteira.
+              </span>
+            </div>
           </div>
 
           {myProducts.length === 0 ? (
@@ -1446,7 +1554,7 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
               <PackageCheck className="w-10 h-10 text-slate-300 mx-auto" />
               <h3 className="text-sm font-bold text-slate-800">Você ainda não cadastrou produtos</h3>
               <p className="text-xs text-slate-500">
-                Envie seu eBook ou vídeo de dicas para análise do administrador e comece a vender.
+                Cadastre seu eBook (PDF) ou vídeo de dicas e gere links de pagamento M-Pesa/mCash instantâneos para vender onde quiser.
               </p>
               <button
                 onClick={() => navigate('/criar-produto')}
@@ -1457,40 +1565,133 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {myProducts.map((prod) => (
-                <div key={prod.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <span className="text-[10px] font-bold text-emerald-700 uppercase">
-                      {prod.type === 'ebook' ? 'eBook' : 'Vídeo'}
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                        prod.status === 'approved'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : prod.status === 'pending_approval'
-                          ? 'bg-amber-100 text-amber-800'
-                          : prod.status === 'rejected'
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      {prod.status === 'approved'
-                        ? 'Aprovado (Ativo)'
-                        : prod.status === 'pending_approval'
-                        ? 'Em Análise'
-                        : prod.status === 'rejected'
-                        ? 'Rejeitado'
-                        : 'Inativo'}
-                    </span>
-                  </div>
+              {myProducts.map((prod) => {
+                const fee10 = Math.round(prod.price * 0.10);
+                const net90 = Math.max(0, prod.price - fee10);
+                const directCheckoutUrl = `${window.location.origin}/checkout?produto=${prod.id}`;
+                const isCopied = copiedId === prod.id;
 
-                  <h4 className="text-sm font-bold text-slate-900 line-clamp-2">{prod.title}</h4>
-                  <div className="flex justify-between text-xs pt-1 border-t border-slate-100">
-                    <span className="text-slate-500">Preço: <strong className="text-slate-900">{prod.price} MT</strong></span>
-                    <span className="text-slate-500">Vendas: <strong className="text-emerald-600">{prod.salesCount}</strong></span>
+                return (
+                  <div key={prod.id} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-[10px] font-bold text-emerald-700 uppercase">
+                          {prod.type === 'ebook' ? 'eBook (PDF)' : 'Vídeo de Dicas'}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            prod.status === 'approved'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : prod.status === 'pending_approval'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {prod.status === 'approved' ? 'Pronto para Vender' : 'Em Análise'}
+                        </span>
+                      </div>
+
+                      <h4 className="text-sm font-bold text-slate-900 line-clamp-2">{prod.title}</h4>
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {prod.listedOnStore ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            ✓ Exibido na Loja do Site
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                            Venda Direta (Links / Redes)
+                          </span>
+                        )}
+                        <span className="text-[10px] font-semibold text-slate-500">
+                          {prod.salesCount} {prod.salesCount === 1 ? 'venda' : 'vendas'}
+                        </span>
+                      </div>
+
+                      {/* Financial breakdown pill */}
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Preço de Venda:</span>
+                          <strong className="text-slate-900 tabular-nums">{prod.price} MT</strong>
+                        </div>
+                        <div className="flex justify-between text-slate-500">
+                          <span>Taxa SpacePay (10%):</span>
+                          <span className="tabular-nums font-semibold text-slate-700">-{fee10} MT</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-700 font-bold pt-1 border-t border-slate-200">
+                          <span>Seu Lucro Líquido (90%):</span>
+                          <span className="tabular-nums">+{net90} MT</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sales Actions & Direct Payment Link */}
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(directCheckoutUrl);
+                          setCopiedId(prod.id);
+                          setTimeout(() => setCopiedId(null), 2500);
+                        }}
+                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs ${
+                          isCopied
+                            ? 'bg-emerald-700 text-white'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        }`}
+                      >
+                        {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{isCopied ? 'Link de Pagamento Copiado!' : 'Copiar Link de Checkout Direto'}</span>
+                      </button>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <a
+                          href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                            `Olá! Acesse o meu material "${prod.title}" pelo link de pagamento seguro SpacePay: ${directCheckoutUrl}`
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-emerald-200 transition-colors"
+                        >
+                          <Share2 className="w-3 h-3 text-emerald-600" />
+                          <span>WhatsApp</span>
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/checkout?produto=${prod.id}`)}
+                          className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Testar Checkout</span>
+                        </button>
+                      </div>
+
+                      {/* Edit & Delete Action Buttons */}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEdit(prod)}
+                          className="flex-1 py-1.5 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-slate-200 transition-colors cursor-pointer"
+                        >
+                          <Pencil className="w-3 h-3 text-slate-500" />
+                          <span>Editar Produto</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDeletingProduct(prod)}
+                          className="py-1.5 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 border border-rose-200 transition-colors cursor-pointer"
+                          title="Excluir produto da conta"
+                        >
+                          <Trash2 className="w-3 h-3 text-rose-600" />
+                          <span>Apagar</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1869,6 +2070,180 @@ export const UserDashboardPage: React.FC<UserDashboardPageProps> = ({
                   </ul>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR PRODUTO */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Editar Produto</h3>
+                <p className="text-xs text-slate-500">Atualize título, preço ou substitua o arquivo digital.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingProduct(null)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProductEdit} className="space-y-4 text-xs">
+              {editError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              {editSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{editSuccessMsg}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Título do Produto *</label>
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Descrição do Produto *</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 leading-relaxed"
+                />
+              </div>
+
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Preço de Venda (Meticais - MT) *</label>
+                  <input
+                    type="number"
+                    min="50"
+                    required
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold tabular-nums text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5 text-[11px]">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Preço de Venda:</span>
+                    <strong className="text-slate-900 tabular-nums">{(Number(editPrice) || 0).toLocaleString('pt-MZ')} MT</strong>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>Taxa da Plataforma SpacePay (10%):</span>
+                    <span className="tabular-nums font-semibold text-slate-700">-{Math.round((Number(editPrice) || 0) * 0.10)} MT</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-700 font-bold pt-1 border-t border-slate-100">
+                    <span>Seu Lucro Líquido Real (90%):</span>
+                    <span className="tabular-nums">+{Math.max(0, (Number(editPrice) || 0) - Math.round((Number(editPrice) || 0) * 0.10))} MT</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Arquivo Digital Atual ou Novo Upload */}
+              <div className="space-y-2">
+                <label className="font-semibold text-slate-700 block">
+                  Arquivo Digital ({editingProduct.type === 'ebook' ? 'eBook PDF' : 'Vídeo MP4'})
+                </label>
+                <FileUploadDropzone
+                  productType={editingProduct.type}
+                  fileName={editFileName}
+                  fileSizeFormatted={editFileSizeFormatted}
+                  fileUrl={editFileUrl}
+                  onFileUploaded={(res) => {
+                    setEditFileName(res.fileName);
+                    setEditFileSize(res.fileSize);
+                    setEditFileSizeFormatted(res.fileSizeFormatted);
+                    setEditFileUrl(res.fileUrl);
+                  }}
+                  onFileRemoved={() => {
+                    setEditFileName('');
+                    setEditFileSize(undefined);
+                    setEditFileSizeFormatted('');
+                    setEditFileUrl('');
+                  }}
+                  externalUrl={editFileUrl}
+                  onExternalUrlChange={(url) => setEditFileUrl(url)}
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingProduct(null)}
+                  disabled={isSavingEdit}
+                  className="px-4 py-2 border border-slate-300 rounded-xl font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold cursor-pointer transition-colors shadow-xs disabled:opacity-50"
+                >
+                  {isSavingEdit ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIRMAR EXCLUSÃO DE PRODUTO */}
+      {deletingProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 text-xs text-center">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900">Excluir Produto?</h3>
+              <p className="text-slate-500 leading-relaxed">
+                Tem certeza que deseja apagar permanentemente o produto <strong>"{deletingProduct.title}"</strong> da sua conta?
+              </p>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[11px] text-left">
+              O link de pagamento direto deste produto deixará de funcionar imediatamente.
+            </div>
+
+            <div className="pt-2 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDeletingProduct(null)}
+                disabled={isDeleting}
+                className="flex-1 py-2 border border-slate-300 rounded-xl font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteProduct}
+                disabled={isDeleting}
+                className="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold cursor-pointer transition-colors shadow-xs disabled:opacity-50"
+              >
+                {isDeleting ? 'Apagando...' : 'Sim, Apagar'}
+              </button>
             </div>
           </div>
         </div>

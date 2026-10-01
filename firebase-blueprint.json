@@ -1,0 +1,215 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Digital product catalog item supporting full CRUD operations for sellers and admin",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "slug": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "type": {
+          "type": "string",
+          "enum": ["ebook", "video"]
+        },
+        "price": {
+          "type": "number"
+        },
+        "affiliateCommission": {
+          "type": "number"
+        },
+        "coverUrl": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "fileUrl": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "videoUrl": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "fileName": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "fileSizeFormatted": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "downloadCount": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "sellerId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "sellerName": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "sellerEmail": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "isPlatformProduct": {
+          "type": "boolean"
+        },
+        "allowAffiliates": {
+          "type": "boolean"
+        },
+        "listedOnStore": {
+          "type": "boolean"
+        },
+        "salesCount": {
+          "type": "number"
+        },
+        "contentSample": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "title", "type", "price", "sellerId", "sellerEmail", "status"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile with role and wallet metadata",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin"]
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "email", "role"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Completed or pending purchase record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "productId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "productTitle": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "amount": {
+          "type": "number"
+        },
+        "buyerName": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "buyerEmail": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "buyerPhone": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "sellerId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "sellerShare": {
+          "type": "number"
+        },
+        "platformFee": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "completed", "failed"]
+        },
+        "paymentMethod": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "netShopTransactionId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "productId", "amount", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": {
+        "$ref": "#/entities/Product"
+      },
+      "description": "Digital products catalog with CRUD support for sellers and admin"
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Registered sellers, buyers, and platform administrators"
+    },
+    "/orders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/Order"
+      },
+      "description": "Real purchase records and transactions"
+    }
+  }
+}

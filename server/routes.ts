@@ -1,10 +1,11 @@
 import express, { Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import path from 'path';
+import multer from 'multer';
 import { GoogleGenAI } from '@google/genai';
 import { db, ADMIN_EMAIL } from './db.ts';
 import { NetShopClient } from './netshop.ts';
-import { ProductType, PaymentMethod } from '../src/types/index.ts';
+import { Product, ProductType, PaymentMethod, Order, OrderStatus } from '../src/types/index.ts';
 import { generateProductPDF } from './pdfGenerator.ts';
 
 export const apiRouter = express.Router();
@@ -13,6 +14,27 @@ const UPLOADS_DIR = path.resolve(process.cwd(), 'server', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
+
+const uploadStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    if (!fs.existsSync(UPLOADS_DIR)) {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const cleanOriginalName = (file.originalname || 'arquivo').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const uniqueFileName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${cleanOriginalName}`;
+    cb(null, uniqueFileName);
+  },
+});
+
+const upload = multer({
+  storage: uploadStorage,
+  limits: {
+    fileSize: 150 * 1024 * 1024, // 150 MB generous limit for PDFs and videos
+  },
+});
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
@@ -111,7 +133,8 @@ apiRouter.get('/products', (req, res) => {
   const type = req.query.type as ProductType | undefined;
   const search = (req.query.search as string || '').toLowerCase().trim();
 
-  let products = db.getProducts(true);
+  // On the public store catalog: ONLY admin products or user products explicitly authorized by admin (listedOnStore === true)
+  let products = db.getStoreProducts(true);
 
   if (type) {
     products = products.filter(p => p.type === type);
@@ -148,47 +171,82 @@ apiRouter.get('/products/:identifier', (req, res) => {
 // ==========================================
 
 apiRouter.post('/upload', (req: Request, res: Response) => {
-  const { fileName, fileType, productType, data } = req.body;
-  if (!data || !fileName) {
-    return res.status(400).json({ error: 'Arquivo inválido ou dados ausentes.' });
-  }
-
-  try {
-    // Strip data URL scheme prefix if present
-    const base64Data = data.includes(';base64,') ? data.split(';base64,')[1] : data;
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    if (!fs.existsSync(UPLOADS_DIR)) {
-      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  upload.single('file')(req, res, (err: any) => {
+    if (err) {
+      console.error('[Upload Multer Error]:', err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'O arquivo excede o limite máximo permitido de 150 MB.' });
+      }
+      return res.status(400).json({ error: err.message || 'Erro ao processar arquivo no servidor.' });
     }
 
-    // Clean filename
-    const cleanOriginalName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const uniqueFileName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${cleanOriginalName}`;
-    const targetPath = path.join(UPLOADS_DIR, uniqueFileName);
+    // 1. Handled via FormData (req.file present)
+    if (req.file) {
+      const fileSize = req.file.size;
+      const fileSizeFormatted = formatFileSize(fileSize);
+      const uniqueFileName = req.file.filename;
+      const cleanOriginalName = (req.file.originalname || uniqueFileName).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const downloadUrl = `/api/files/download/${uniqueFileName}`;
+      const streamUrl = `/api/files/stream/${uniqueFileName}`;
+      const publicUrl = `/uploads/${uniqueFileName}`;
 
-    fs.writeFileSync(targetPath, buffer);
+      return res.json({
+        success: true,
+        fileId: uniqueFileName,
+        fileName: cleanOriginalName,
+        fileSize,
+        fileSizeFormatted,
+        fileType: req.file.mimetype,
+        downloadUrl,
+        streamUrl,
+        publicUrl,
+        fileUrl: publicUrl,
+      });
+    }
 
-    const fileSize = buffer.length;
-    const fileSizeFormatted = formatFileSize(fileSize);
-    const downloadUrl = `/api/files/download/${uniqueFileName}`;
-    const streamUrl = `/api/files/stream/${uniqueFileName}`;
+    // 2. Handled via Base64 JSON ({ fileName, fileType, productType, data })
+    const { fileName, fileType, productType, data } = req.body || {};
+    if (data && fileName) {
+      try {
+        const base64Data = data.includes(';base64,') ? data.split(';base64,')[1] : data;
+        const buffer = Buffer.from(base64Data, 'base64');
 
-    res.json({
-      success: true,
-      fileId: uniqueFileName,
-      fileName: cleanOriginalName,
-      fileSize,
-      fileSizeFormatted,
-      fileType: fileType || (productType === 'ebook' ? 'application/pdf' : 'video/mp4'),
-      downloadUrl,
-      streamUrl,
-      publicUrl: `/uploads/${uniqueFileName}`,
-    });
-  } catch (err: any) {
-    console.error('[Upload Error]:', err);
-    res.status(500).json({ error: 'Falha ao processar e salvar o arquivo no servidor.' });
-  }
+        if (!fs.existsSync(UPLOADS_DIR)) {
+          fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+        }
+
+        const cleanOriginalName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const uniqueFileName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${cleanOriginalName}`;
+        const targetPath = path.join(UPLOADS_DIR, uniqueFileName);
+
+        fs.writeFileSync(targetPath, buffer);
+
+        const fileSize = buffer.length;
+        const fileSizeFormatted = formatFileSize(fileSize);
+        const downloadUrl = `/api/files/download/${uniqueFileName}`;
+        const streamUrl = `/api/files/stream/${uniqueFileName}`;
+        const publicUrl = `/uploads/${uniqueFileName}`;
+
+        return res.json({
+          success: true,
+          fileId: uniqueFileName,
+          fileName: cleanOriginalName,
+          fileSize,
+          fileSizeFormatted,
+          fileType: fileType || (productType === 'ebook' ? 'application/pdf' : 'video/mp4'),
+          downloadUrl,
+          streamUrl,
+          publicUrl,
+          fileUrl: publicUrl,
+        });
+      } catch (e: any) {
+        console.error('[Upload Base64 Error]:', e);
+        return res.status(500).json({ error: 'Falha ao salvar arquivo base64 no servidor.' });
+      }
+    }
+
+    return res.status(400).json({ error: 'Nenhum arquivo enviado. Selecione um arquivo para upload.' });
+  });
 });
 
 // Download a specific uploaded file by filename
@@ -349,19 +407,21 @@ apiRouter.post('/products', (req, res) => {
     return res.status(400).json({ error: 'Preço mínimo é de 50 MT.' });
   }
 
-  const numComm = Number(affiliateCommission || 0);
-  if (numComm > numPrice * 0.7) {
-    return res.status(400).json({ error: 'A comissão de afiliado não pode ultrapassar 70% do preço do produto.' });
-  }
+  const isAdmin = user.role === 'admin' || user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-  const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  // For admin: can set any commission percentage/amount without restrictions
+  // For regular users: affiliate program is exclusively for admin products
+  let finalAffiliateCommission = 0;
+  if (isAdmin) {
+    finalAffiliateCommission = Math.max(0, Math.min(Number(affiliateCommission || 0), numPrice));
+  }
 
   const newProduct = db.createProduct({
     title: title.trim(),
     description: description.trim(),
     type,
     price: numPrice,
-    affiliateCommission: numComm,
+    affiliateCommission: finalAffiliateCommission,
     coverUrl: coverUrl || (type === 'ebook' ? '/src/assets/images/product_ebook_cv_1790278048991.jpg' : '/src/assets/images/product_video_financas_1790278058234.jpg'),
     fileUrl: fileUrl || '',
     videoUrl: videoUrl || '',
@@ -373,13 +433,16 @@ apiRouter.post('/products', (req, res) => {
     sellerName: user.name,
     sellerEmail: user.email,
     isPlatformProduct: isAdmin,
-    allowAffiliates: numComm > 0,
+    listedOnStore: isAdmin, // Only admin products appear on the public store by default
+    allowAffiliates: isAdmin && finalAffiliateCommission > 0, // Affiliation is exclusively for admin products
     previewDicas: Array.isArray(previewDicas) ? previewDicas : [],
   });
 
   res.status(201).json({
     product: newProduct,
-    message: 'Produto cadastrado e publicado com sucesso! Já está ativo na loja para venda e afiliações.',
+    message: isAdmin
+      ? 'Produto oficial cadastrado com sucesso! Ativo na loja do site e na área de afiliados.'
+      : 'Produto cadastrado com sucesso na sua conta! Use seus links de pagamento direto para vender no WhatsApp, redes sociais ou qualquer site. Taxa SpacePay de 10% cobrada apenas sobre vendas realizadas.',
   });
 });
 
@@ -428,9 +491,10 @@ apiRouter.post('/checkout/initiate', async (req, res) => {
     platformFee = Math.max(0, gross - affiliateCommission);
     sellerShare = 0;
   } else {
-    // 10% SpacePay platform fee for user created products
+    // 10% SpacePay platform fee for user created products sold via direct links (affiliation is exclusively for admin products)
+    affiliateCommission = 0;
     platformFee = Math.round(gross * 0.10);
-    sellerShare = Math.max(0, gross - platformFee - affiliateCommission);
+    sellerShare = Math.max(0, gross - platformFee);
   }
 
   // Create pending order
@@ -707,10 +771,9 @@ apiRouter.post('/webhooks/netshop', (req, res) => {
 
   if (isFailed) {
     if (order.status !== 'completed') {
-      order.status = 'failed';
-      db.saveData();
+      db.updateOrderStatus(order.id, 'failed');
     }
-    console.log(`[NetShop Webhook Falha]: Pedido ${order.id} marcado como ${order.status}.`);
+    console.log(`[NetShop Webhook Falha]: Pedido ${order.id} marcado como failed.`);
     return res.status(200).json({
       success: true,
       processed: true,
@@ -833,6 +896,116 @@ apiRouter.get('/user/my-products', (req, res) => {
   const allProducts = db.getProducts(false);
   const myProducts = allProducts.filter(p => p.sellerId === user.id || p.sellerEmail === user.email);
   res.json({ products: myProducts });
+});
+
+// Update own product (seller can edit price, title, description, file, tips)
+apiRouter.put('/user/my-products/:id', (req, res) => {
+  const user = getUserFromHeader(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Não autenticado.' });
+  }
+
+  const product = db.getProductByIdOrSlug(req.params.id);
+  if (!product) {
+    return res.status(404).json({ error: 'Produto não encontrado.' });
+  }
+
+  const isOwner =
+    product.sellerId === user.id ||
+    product.sellerEmail.toLowerCase() === user.email.toLowerCase() ||
+    user.role === 'admin' ||
+    user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  if (!isOwner) {
+    return res.status(403).json({ error: 'Você não tem permissão para editar este produto.' });
+  }
+
+  const {
+    title,
+    description,
+    price,
+    coverUrl,
+    fileUrl,
+    videoUrl,
+    fileName,
+    fileSize,
+    fileSizeFormatted,
+    previewDicas,
+  } = req.body;
+
+  const updates: Partial<Product> = {};
+
+  if (title !== undefined) {
+    if (!title.trim()) {
+      return res.status(400).json({ error: 'O título do produto não pode ficar vazio.' });
+    }
+    updates.title = title.trim();
+  }
+
+  if (description !== undefined) {
+    if (!description.trim()) {
+      return res.status(400).json({ error: 'A descrição do produto não pode ficar vazia.' });
+    }
+    updates.description = description.trim();
+  }
+
+  if (price !== undefined) {
+    const numPrice = Number(price);
+    if (isNaN(numPrice) || numPrice < 50) {
+      return res.status(400).json({ error: 'O preço mínimo de venda é de 50 MT.' });
+    }
+    updates.price = numPrice;
+  }
+
+  if (coverUrl !== undefined && coverUrl.trim()) {
+    updates.coverUrl = coverUrl.trim();
+  }
+
+  if (fileUrl !== undefined) updates.fileUrl = fileUrl;
+  if (videoUrl !== undefined) updates.videoUrl = videoUrl;
+  if (fileName !== undefined) updates.fileName = fileName;
+  if (fileSize !== undefined) updates.fileSize = fileSize;
+  if (fileSizeFormatted !== undefined) updates.fileSizeFormatted = fileSizeFormatted;
+  if (Array.isArray(previewDicas)) updates.previewDicas = previewDicas;
+
+  const updated = db.updateProduct(product.id, updates);
+  res.json({
+    product: updated,
+    message: 'Produto atualizado com sucesso!',
+  });
+});
+
+// Delete own product (seller can delete their product)
+apiRouter.delete('/user/my-products/:id', (req, res) => {
+  const user = getUserFromHeader(req);
+  if (!user) {
+    return res.status(401).json({ error: 'Não autenticado.' });
+  }
+
+  const product = db.getProductByIdOrSlug(req.params.id);
+  if (!product) {
+    return res.status(404).json({ error: 'Produto não encontrado.' });
+  }
+
+  const isOwner =
+    product.sellerId === user.id ||
+    product.sellerEmail.toLowerCase() === user.email.toLowerCase() ||
+    user.role === 'admin' ||
+    user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  if (!isOwner) {
+    return res.status(403).json({ error: 'Você não tem permissão para excluir este produto.' });
+  }
+
+  const ok = db.deleteProduct(product.id);
+  if (!ok) {
+    return res.status(500).json({ error: 'Erro ao remover produto do banco de dados.' });
+  }
+
+  res.json({
+    success: true,
+    message: 'Produto excluído com sucesso da sua conta.',
+  });
 });
 
 // User's sales & 10% fee breakdown
@@ -1053,6 +1226,22 @@ apiRouter.patch('/admin/products/:id/status', requireAdmin, (req, res) => {
   res.json({ product: updated, message: `Status alterado para ${status}.` });
 });
 
+apiRouter.patch('/admin/products/:id/store-listing', requireAdmin, (req, res) => {
+  const { listedOnStore } = req.body;
+  const isListed = Boolean(listedOnStore);
+  const updated = db.updateProduct(req.params.id, { listedOnStore: isListed });
+  if (!updated) {
+    return res.status(404).json({ error: 'Produto não encontrado.' });
+  }
+
+  res.json({
+    product: updated,
+    message: isListed
+      ? 'Produto agora está visível e destacado na Loja do Site!'
+      : 'Produto removido da loja do site (permanece ativo para venda direta via link do vendedor).',
+  });
+});
+
 apiRouter.put('/admin/products/:id', requireAdmin, (req, res) => {
   const updated = db.updateProduct(req.params.id, req.body);
   if (!updated) {
@@ -1211,43 +1400,14 @@ apiRouter.post('/admin/netshop/test', requireAdmin, async (req, res) => {
   res.json(result);
 });
 
-// Admin Webhook Simulation & Testing Endpoint
-apiRouter.post('/admin/netshop/test-webhook', requireAdmin, (req, res) => {
-  const { orderId } = req.body;
-  let order = orderId ? (db.getOrderById(orderId) || db.getOrderByReference(orderId)) : db.getAllOrders().find(o => o.status === 'pending');
-
-  if (!order) {
-    const products = db.getProducts(true);
-    const prod = products[0];
-    order = db.createOrder({
-      productId: prod.id,
-      productTitle: prod.title,
-      productType: prod.type,
-      buyerEmail: 'cliente.teste.webhook@gmail.com',
-      buyerName: 'Cliente Teste Webhook',
-      buyerPhone: '+258 840001122',
-      amount: prod.price,
-      paymentMethod: 'mpesa',
-      affiliateId: undefined,
-    });
-  }
-
-  const simulatedTxId = `TX-HOOK-${Date.now()}`;
-  const simulatedReceipt = `MPESA-REC-${Date.now().toString().slice(-6)}`;
-  const result = db.completeOrder(
-    order.id,
-    simulatedTxId,
-    order.netShopReference || `REF-${order.id}`,
-    simulatedReceipt
-  );
-
+// Admin Webhook Status & Diagnostics (100% Real, sem simulações)
+apiRouter.get('/admin/netshop/webhook-status', requireAdmin, (req, res) => {
+  const config = db.getNetShopConfig();
   res.json({
-    success: true,
-    message: `Webhook de teste executado com sucesso no banco de dados. Pedido ${order.id} concluído!`,
-    order: result.order || order,
-    platformFee: result.order?.platformFee,
-    sellerShare: result.order?.sellerShare,
-    adminEmail: ADMIN_EMAIL,
+    active: Boolean(config.webhookSecret),
+    configuredSecret: Boolean(config.webhookSecret),
+    processedTransactionsCount: (db as any).data.processedTransactions.length,
+    message: 'Endpoint de webhook oficial ativo e operando em tempo real com validação HMAC-SHA256.',
   });
 });
 

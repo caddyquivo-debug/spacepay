@@ -118,10 +118,15 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
           <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
               <img
-                src={product.coverUrl}
+                src={product.coverUrl || (product.type === 'video' ? '/src/assets/images/product_video_financas_1790278058234.jpg' : '/src/assets/images/product_ebook_cv_1790278048991.jpg')}
                 alt={product.title}
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = product.type === 'video'
+                    ? '/src/assets/images/product_video_financas_1790278058234.jpg'
+                    : '/src/assets/images/product_ebook_cv_1790278048991.jpg';
+                }}
               />
               <div className="absolute top-4 left-4 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-900 shadow-sm flex items-center gap-2">
                 {product.type === 'ebook' ? (

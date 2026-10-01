@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../services/api.ts';
+import { firestoreProducts } from '../lib/firestoreProducts.ts';
 import { ProductType } from '../types/index.ts';
 import { FileUploadDropzone } from '../components/FileUploadDropzone.tsx';
 import {
@@ -49,7 +50,8 @@ export const CreateProductPage: React.FC<CreateProductPageProps> = ({ navigate }
   ];
 
   const numPrice = Number(price) || 0;
-  const numComm = Number(affiliateCommission) || 0;
+  // If user is admin, they can configure any commission they want. If regular user, commission is 0.
+  const numComm = isAdmin ? (Number(affiliateCommission) || 0) : 0;
   const spacePayFee = Math.round(numPrice * 0.10);
   const sellerShare = Math.max(0, numPrice - spacePayFee - numComm);
 
@@ -70,8 +72,8 @@ export const CreateProductPage: React.FC<CreateProductPageProps> = ({ navigate }
       return;
     }
 
-    if (numComm > numPrice * 0.7) {
-      setError('A comissão de afiliado não pode exceder 70% do valor do produto.');
+    if (isAdmin && numComm > numPrice) {
+      setError('A comissão de afiliado não pode exceder o valor total do produto.');
       return;
     }
 
@@ -110,6 +112,15 @@ export const CreateProductPage: React.FC<CreateProductPageProps> = ({ navigate }
         fileSizeFormatted: fileSizeFormatted || undefined,
         previewDicas: parsedDicas,
       });
+
+      // Persist product directly into Firestore
+      if (res.product) {
+        try {
+          await firestoreProducts.create(res.product);
+        } catch (firestoreErr) {
+          console.warn('[Firestore Sync]: Could not sync product to Firestore:', firestoreErr);
+        }
+      }
 
       setSuccess(res.message);
       setTimeout(() => {
@@ -276,13 +287,13 @@ export const CreateProductPage: React.FC<CreateProductPageProps> = ({ navigate }
           {/* Valores, Comissão e Divisão da Taxa de 10% */}
           <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
             <h4 className="text-xs font-bold text-slate-900 uppercase">
-              2. Preço, Comissão e Divisão de Valores
+              2. Preço de Venda e Divisão de Valores
             </h4>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className={`grid gap-4 ${isAdmin ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
               <div>
                 <label className="text-xs font-medium text-slate-700 block mb-1">
-                  Preço de Venda (Meticais - MT) *
+                  Preço de Venda ao Cliente (Meticais - MT) *
                 </label>
                 <input
                   type="number"
@@ -292,21 +303,54 @@ export const CreateProductPage: React.FC<CreateProductPageProps> = ({ navigate }
                   onChange={(e) => setPrice(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg text-slate-900 font-bold tabular-nums"
                 />
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  Valor cobrado do comprador no checkout M-Pesa / mCash.
+                </span>
               </div>
 
-              <div>
-                <label className="text-xs font-medium text-slate-700 block mb-1">
-                  Comissão para Afiliados (MT)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max={numPrice * 0.7}
-                  value={affiliateCommission}
-                  onChange={(e) => setAffiliateCommission(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg text-slate-900 font-bold tabular-nums text-emerald-600"
-                />
-              </div>
+              {isAdmin ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-slate-700">
+                      Comissão para Afiliados (MT)
+                    </label>
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded">
+                      Admin: Qualquer Percentual Livre
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    max={numPrice}
+                    value={affiliateCommission}
+                    onChange={(e) => setAffiliateCommission(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg text-slate-900 font-bold tabular-nums text-emerald-600"
+                  />
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <span className="text-[10px] text-slate-400">Atalhos rápidos:</span>
+                    {[20, 30, 40, 50, 70].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setAffiliateCommission(String(Math.round((numPrice * pct) / 100)))}
+                        className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 rounded text-[10px] text-slate-700 font-semibold cursor-pointer"
+                      >
+                        {pct}% ({Math.round((numPrice * pct) / 100)} MT)
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-emerald-50/80 border border-emerald-200/80 rounded-xl text-xs text-emerald-900 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-emerald-800">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <span>Modelo de Venda Direta do Usuário (Taxa Única de 10%)</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    Você venderá este infoproduto através de <strong>Links de Pagamento Direto SpacePay</strong> (para divulgar no WhatsApp, Instagram, Facebook ou qualquer site). A taxa de 10% da plataforma é deduzida automaticamente apenas sobre vendas aprovadas.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Live Financial Breakdown */}
@@ -316,22 +360,24 @@ export const CreateProductPage: React.FC<CreateProductPageProps> = ({ navigate }
                 <span>Cálculo Transparente SpacePay por Venda:</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Preço Bruto:</span>
+                <span>Preço Bruto do Produto:</span>
                 <span className="tabular-nums font-semibold text-slate-900">{numPrice.toLocaleString('pt-MZ')} MT</span>
               </div>
               <div className="flex justify-between text-slate-500">
-                <span>Taxa SpacePay (10% sobre o produto):</span>
+                <span>Taxa da Plataforma SpacePay (10%):</span>
                 <span className="tabular-nums font-semibold text-slate-800">- {spacePayFee.toLocaleString('pt-MZ')} MT</span>
               </div>
-              {numComm > 0 && (
+              {isAdmin && numComm > 0 && (
                 <div className="flex justify-between text-amber-600">
-                  <span>Comissão do Afiliado:</span>
+                  <span>Comissão de Afiliado (Configurada pelo Admin):</span>
                   <span className="tabular-nums font-semibold">- {numComm.toLocaleString('pt-MZ')} MT</span>
                 </div>
               )}
               <div className="flex justify-between text-emerald-700 font-bold pt-2 border-t border-slate-100">
-                <span>Seu Rendimento Líquido:</span>
-                <span className="tabular-nums text-sm font-extrabold">{sellerShare.toLocaleString('pt-MZ')} MT</span>
+                <span>{isAdmin ? 'Receita da Plataforma:' : 'Seu Rendimento Líquido Real (90%):'}</span>
+                <span className="tabular-nums text-sm font-extrabold">
+                  {(isAdmin ? Math.max(0, numPrice - numComm) : sellerShare).toLocaleString('pt-MZ')} MT
+                </span>
               </div>
             </div>
           </div>

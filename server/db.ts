@@ -8,6 +8,7 @@ import {
   Withdrawal,
   NetShopConfig,
   AffiliateStats,
+  OrderStatus,
 } from '../src/types/index.ts';
 import { generateProductPDF } from './pdfGenerator.ts';
 
@@ -41,14 +42,14 @@ const DEFAULT_PRODUCTS: Product[] = [
     fileUrl: '/uploads/Como_Fazer_um_CV_Profissional.pdf',
     fileName: 'Como_Fazer_um_CV_Profissional.pdf',
     fileSizeFormatted: '1.4 MB',
-    downloadCount: 142,
+    downloadCount: 0,
     status: 'approved',
     sellerId: 'admin-caddy',
     sellerName: 'SpacePay Editorial',
     sellerEmail: ADMIN_EMAIL,
     isPlatformProduct: true,
     allowAffiliates: true,
-    salesCount: 142,
+    salesCount: 0,
     previewDicas: [
       'Estrutura moderna compatível com sistemas ATS (rastreadores de candidatos)',
       'Como quantificar conquistas sem parecer pretensioso',
@@ -77,14 +78,14 @@ const DEFAULT_PRODUCTS: Product[] = [
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
     fileName: 'Dicas_Rapidas_de_Financas_Pessoais.mp4',
     fileSizeFormatted: '18.5 MB',
-    downloadCount: 98,
+    downloadCount: 0,
     status: 'approved',
     sellerId: 'admin-caddy',
     sellerName: 'SpacePay Editorial',
     sellerEmail: ADMIN_EMAIL,
     isPlatformProduct: true,
     allowAffiliates: true,
-    salesCount: 98,
+    salesCount: 0,
     previewDicas: [
       'A regra dos 50/30/20 adaptada para a realidade de custos em Moçambique',
       'Como evitar o dreno silencioso de pequenas taxas móveis',
@@ -111,14 +112,14 @@ const DEFAULT_PRODUCTS: Product[] = [
     fileUrl: '/uploads/Marketing_Digital_para_Negocios_Locais.pdf',
     fileName: 'Marketing_Digital_para_Negocios_Locais.pdf',
     fileSizeFormatted: '2.1 MB',
-    downloadCount: 85,
+    downloadCount: 0,
     status: 'approved',
     sellerId: 'admin-caddy',
     sellerName: 'SpacePay Editorial',
     sellerEmail: ADMIN_EMAIL,
     isPlatformProduct: true,
     allowAffiliates: true,
-    salesCount: 85,
+    salesCount: 0,
     previewDicas: [
       'Como configurar o WhatsApp Business com respostas automáticas e catálogo persuasivo',
       'Guia para aparecer no topo das buscas no Google da sua cidade',
@@ -145,14 +146,14 @@ const DEFAULT_PRODUCTS: Product[] = [
     videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
     fileName: 'Vendas_e_Negociacao_de_Alto_Impacto.mp4',
     fileSizeFormatted: '22.0 MB',
-    downloadCount: 67,
+    downloadCount: 0,
     status: 'approved',
     sellerId: 'admin-caddy',
     sellerName: 'SpacePay Editorial',
     sellerEmail: ADMIN_EMAIL,
     isPlatformProduct: true,
     allowAffiliates: true,
-    salesCount: 67,
+    salesCount: 0,
     previewDicas: [
       'Técnica do Espelho para gerar empatia instantânea',
       'Como desarmar a objeção de preço demonstrando valor intangível',
@@ -177,26 +178,11 @@ const DEFAULT_USERS: User[] = [
     phone: '+258 835373674',
     createdAt: new Date('2025-01-01').toISOString(),
     wallet: {
-      availableBalance: 24500,
-      pendingBalance: 1200,
-      totalEarned: 35700,
-      totalSales: 392,
-      totalCommissions: 4800,
-    }
-  },
-  {
-    id: 'user-afiliado-1',
-    name: 'Armando Macamo',
-    email: 'armando.macamo@example.com',
-    role: 'user',
-    phone: '+258 841234567',
-    createdAt: new Date('2025-02-10').toISOString(),
-    wallet: {
-      availableBalance: 2150,
-      pendingBalance: 300,
-      totalEarned: 5400,
-      totalSales: 28,
-      totalCommissions: 4200,
+      availableBalance: 0,
+      pendingBalance: 0,
+      totalEarned: 0,
+      totalSales: 0,
+      totalCommissions: 0,
     }
   }
 ];
@@ -209,75 +195,6 @@ const DEFAULT_NETSHOP_CONFIG: NetShopConfig = {
   enabled: true,
   lastUpdated: new Date().toISOString(),
 };
-
-function generateSeedOrders(): Order[] {
-  const seedOrders: Order[] = [];
-  const buyerList = [
-    { name: 'Mateus Chissano', email: 'mateus.c@gmail.com', phone: '+258 845612345' },
-    { name: 'Ana Paula Mondlane', email: 'anapaula.m@gmail.com', phone: '+258 823456789' },
-    { name: 'Félix Machel', email: 'felix.machel@outlook.com', phone: '+258 871239874' },
-    { name: 'Delfina Sitoe', email: 'delfina.sitoe@gmail.com', phone: '+258 834567890' },
-    { name: 'Inácio Cossa', email: 'inacio.cossa@yahoo.com', phone: '+258 849876543' },
-    { name: 'Beatriz Langa', email: 'beatriz.langa@gmail.com', phone: '+258 861112233' },
-    { name: 'Carlos Tembe', email: 'carlos.tembe@hotmail.com', phone: '+258 829988776' },
-    { name: 'Eunice Mabote', email: 'eunice.mabote@gmail.com', phone: '+258 847778899' },
-  ];
-  const paymentMethods: ('mpesa' | 'mcash' | 'visa')[] = ['mpesa', 'mpesa', 'visa', 'mcash', 'mpesa'];
-
-  const now = new Date();
-  // Realistic distribution over past 6 months to showcase revenue trends & growth
-  const monthlyDistributions = [
-    { monthOffset: 5, targetCount: 38 },
-    { monthOffset: 4, targetCount: 46 },
-    { monthOffset: 3, targetCount: 62 },
-    { monthOffset: 2, targetCount: 78 },
-    { monthOffset: 1, targetCount: 94 },
-    { monthOffset: 0, targetCount: 74 },
-  ];
-
-  let orderIndex = 1000;
-  monthlyDistributions.forEach(dist => {
-    for (let i = 0; i < dist.targetCount; i++) {
-      orderIndex++;
-      const prod = DEFAULT_PRODUCTS[i % DEFAULT_PRODUCTS.length];
-      const buyer = buyerList[i % buyerList.length];
-      const method = paymentMethods[i % paymentMethods.length];
-      const hasAffiliate = i % 2 === 0;
-      const affiliateComm = hasAffiliate ? prod.affiliateCommission : 0;
-      const platformFee = prod.isPlatformProduct ? Math.round(prod.price * 0.10) : Math.round(prod.price * 0.10);
-      const sellerShare = prod.price - platformFee - affiliateComm;
-
-      const day = Math.min(28, (i % 27) + 1);
-      const hour = 8 + (i % 14);
-      const minute = (i * 13) % 60;
-      const orderDate = new Date(now.getFullYear(), now.getMonth() - dist.monthOffset, day, hour, minute);
-      const dateStr = orderDate.toISOString();
-
-      seedOrders.push({
-        id: `ord-seed-${orderIndex}`,
-        productId: prod.id,
-        productTitle: prod.title,
-        productType: prod.type,
-        buyerEmail: buyer.email,
-        buyerName: buyer.name,
-        buyerPhone: buyer.phone,
-        amount: prod.price,
-        paymentMethod: method,
-        status: 'completed',
-        affiliateId: hasAffiliate ? 'user-afiliado-1' : undefined,
-        affiliateCommission: affiliateComm,
-        platformFee,
-        sellerShare,
-        netShopTransactionId: `NTS-TX-${orderIndex}`,
-        netShopReference: `REF-2026-${orderIndex}`,
-        createdAt: dateStr,
-        paidAt: dateStr,
-      });
-    }
-  });
-
-  return seedOrders;
-}
 
 class Database {
   private data: DatabaseSchema;
@@ -295,18 +212,118 @@ class Database {
       if (fs.existsSync(DATA_FILE)) {
         const raw = fs.readFileSync(DATA_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
+        let modified = false;
+
         // Ensure admin always exists with correct role
         const adminIndex = parsed.users.findIndex((u: User) => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
         if (adminIndex >= 0) {
           parsed.users[adminIndex].role = 'admin';
         } else {
           parsed.users.unshift(DEFAULT_USERS[0]);
+          modified = true;
         }
-        // Seed orders if empty so dashboard charts have data
-        if (!parsed.orders || parsed.orders.length === 0) {
-          parsed.orders = generateSeedOrders();
+        // Ensure listedOnStore and valid coverUrl on all products
+        if (Array.isArray(parsed.products)) {
+          for (const p of parsed.products) {
+            if (p.listedOnStore === undefined) {
+              p.listedOnStore = Boolean(p.isPlatformProduct);
+              modified = true;
+            }
+            if (!p.coverUrl || p.coverUrl.trim() === '') {
+              p.coverUrl = p.type === 'video'
+                ? '/src/assets/images/product_video_financas_1790278058234.jpg'
+                : '/src/assets/images/product_ebook_cv_1790278048991.jpg';
+              modified = true;
+            }
+          }
+        }
+        // Filter out all simulated/fake seed orders - only 100% REAL transactions allowed!
+        if (Array.isArray(parsed.orders)) {
+          const originalCount = parsed.orders.length;
+          parsed.orders = parsed.orders.filter((o: Order) => !o.id.startsWith('ord-seed-'));
+          if (parsed.orders.length !== originalCount) {
+            modified = true;
+          }
+        } else {
+          parsed.orders = [];
+        }
+
+        // Remove fake demo user
+        if (Array.isArray(parsed.users)) {
+          const originalUserCount = parsed.users.length;
+          parsed.users = parsed.users.filter((u: User) => u.id !== 'user-afiliado-1');
+          if (parsed.users.length !== originalUserCount) {
+            modified = true;
+          }
+        }
+
+        // Recalculate product salesCount and downloadCount strictly from real completed orders
+        if (Array.isArray(parsed.products)) {
+          for (const p of parsed.products) {
+            const realSales = parsed.orders.filter((o: Order) => o.productId === p.id && o.status === 'completed');
+            if (p.salesCount !== realSales.length) {
+              p.salesCount = realSales.length;
+              modified = true;
+            }
+            if (p.downloadCount !== undefined && p.downloadCount > realSales.length) {
+              p.downloadCount = realSales.length;
+              modified = true;
+            }
+          }
+        }
+
+        // Strictly re-calculate all user wallet balances from real completed orders
+        const adminUser = parsed.users.find((u: User) => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
+        if (adminUser) {
+          adminUser.wallet = {
+            availableBalance: 0,
+            pendingBalance: 0,
+            totalEarned: 0,
+            totalSales: 0,
+            totalCommissions: 0,
+          };
+        }
+
+        // Reset all seller wallets to calculate from real transactions
+        for (const u of parsed.users) {
+          if (u.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase() && u.wallet) {
+            u.wallet.availableBalance = 0;
+            u.wallet.totalEarned = 0;
+            u.wallet.totalSales = 0;
+          }
+        }
+
+        for (const order of parsed.orders) {
+          if (order.status === 'completed') {
+            const product = parsed.products.find((p: Product) => p.id === order.productId);
+            // Admin wallet credit (Taxa SpacePay ou produto oficial)
+            if (adminUser) {
+              const fee = order.platformFee || 0;
+              adminUser.wallet.availableBalance += fee;
+              adminUser.wallet.totalEarned += fee;
+              adminUser.wallet.totalSales += 1;
+            }
+            // Seller wallet credit
+            if (product && !product.isPlatformProduct) {
+              const seller = parsed.users.find((u: User) => u.id === product.sellerId || u.email.toLowerCase() === product.sellerEmail.toLowerCase());
+              if (seller) {
+                if (!seller.wallet) {
+                  seller.wallet = { availableBalance: 0, pendingBalance: 0, totalEarned: 0, totalSales: 0, totalCommissions: 0 };
+                }
+                const share = order.sellerShare || 0;
+                seller.wallet.availableBalance += share;
+                seller.wallet.totalEarned += share;
+                seller.wallet.totalSales += 1;
+              }
+            }
+          }
+        }
+        modified = true;
+
+        if (modified) {
           this.saveData(parsed);
         }
+
         this.ensureSeedUploads(parsed.products);
         return parsed;
       }
@@ -317,7 +334,7 @@ class Database {
     const initialData: DatabaseSchema = {
       products: DEFAULT_PRODUCTS,
       users: DEFAULT_USERS,
-      orders: generateSeedOrders(),
+      orders: [],
       transactions: [],
       withdrawals: [],
       netShopConfig: DEFAULT_NETSHOP_CONFIG,
@@ -360,7 +377,7 @@ class Database {
     }
   }
 
-  private saveData(dataToSave?: DatabaseSchema) {
+  saveData(dataToSave?: DatabaseSchema) {
     try {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -380,6 +397,16 @@ class Database {
     return this.data.products;
   }
 
+  // Returns ONLY products displayed on the public store catalog:
+  // Admin products are listed by default; user products are listed ONLY if authorized by admin (listedOnStore === true)
+  getStoreProducts(onlyApproved: boolean = true): Product[] {
+    return this.data.products.filter(p => {
+      const isApproved = onlyApproved ? p.status === 'approved' : true;
+      const isAllowedOnStore = p.isPlatformProduct || p.listedOnStore === true;
+      return isApproved && isAllowedOnStore;
+    });
+  }
+
   getProductByIdOrSlug(identifier: string): Product | undefined {
     return this.data.products.find(
       p => p.id === identifier || p.slug === identifier
@@ -394,10 +421,23 @@ class Database {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '') + '-' + Date.now().toString().slice(-4);
 
+    const isPlatformProduct = Boolean(product.isPlatformProduct);
+    const listedOnStore = product.listedOnStore !== undefined ? product.listedOnStore : isPlatformProduct;
+
+    const defaultCover = product.type === 'video'
+      ? '/src/assets/images/product_video_financas_1790278058234.jpg'
+      : '/src/assets/images/product_ebook_cv_1790278048991.jpg';
+    const finalCover = (product.coverUrl && product.coverUrl.trim()) ? product.coverUrl.trim() : defaultCover;
+
     const newProduct: Product = {
       ...product,
+      coverUrl: finalCover,
       id: `prod-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       slug,
+      isPlatformProduct,
+      listedOnStore,
+      allowAffiliates: isPlatformProduct ? Boolean(product.allowAffiliates) : false,
+      affiliateCommission: isPlatformProduct ? (product.affiliateCommission || 0) : 0,
       salesCount: 0,
       createdAt: new Date().toISOString(),
     };
@@ -529,6 +569,14 @@ class Database {
     );
   }
 
+  updateOrderStatus(orderId: string, status: OrderStatus): boolean {
+    const order = this.getOrderById(orderId) || this.getOrderByReference(orderId);
+    if (!order) return false;
+    order.status = status;
+    this.saveData();
+    return true;
+  }
+
   // IDEMPOTENT ORDER COMPLETION & COMMISSION DISTRIBUTION
   // Exactly implements the 10% fee and affiliate commission calculations
   completeOrder(
@@ -582,13 +630,14 @@ class Database {
     }
 
     if (product.isPlatformProduct) {
-      // Admin/SpacePay product
+      // Admin/SpacePay product: Platform receives remaining after affiliate commission
       platformFee = Math.max(0, gross - affiliateCommission);
       sellerShare = 0; // belongs to platform
     } else {
-      // User created product: 10% platform fee
+      // User created product: SpacePay charges exactly 10% platform fee for admin, 90% goes to seller
       platformFee = Math.round(gross * 0.10);
-      sellerShare = Math.max(0, gross - platformFee - affiliateCommission);
+      affiliateCommission = 0; // Affiliation is exclusively for admin products
+      sellerShare = Math.max(0, gross - platformFee);
     }
 
     // Update order status
@@ -701,7 +750,8 @@ class Database {
     const user = this.getUserById(userId);
     if (!user) return [];
 
-    const products = this.getProducts(true).filter(p => p.allowAffiliates);
+    // Affiliate products are strictly from the admin/platform
+    const products = this.data.products.filter(p => p.isPlatformProduct && p.allowAffiliates && p.status === 'approved');
     return products.map(p => {
       const key = `${p.id}_${userId}`;
       const clicks = this.data.affiliateClicks[key] || 0;

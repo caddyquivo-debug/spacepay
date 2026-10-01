@@ -22,6 +22,7 @@ export interface Product {
   sellerName: string;
   sellerEmail: string;
   isPlatformProduct: boolean;
+  listedOnStore?: boolean; // true = displayed on the public store catalog; admin products are true by default; user products are false by default unless enabled by admin
   allowAffiliates: boolean;
   salesCount: number;
   previewDicas?: string[]; // Highlights / Dicas

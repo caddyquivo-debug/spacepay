@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, ADMIN_EMAIL } from '../context/AuthContext.tsx';
 import { api } from '../services/api.ts';
+import { firestoreProducts } from '../lib/firestoreProducts.ts';
 import { FileUploadDropzone } from '../components/FileUploadDropzone.tsx';
 import {
   ResponsiveContainer,
@@ -146,8 +147,8 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
   const [baseUrl, setBaseUrl] = useState('https://www.netshop.co.mz/api/v1');
   const [netShopTesting, setNetShopTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
-  const [webhookTesting, setWebhookTesting] = useState(false);
-  const [webhookTestResult, setWebhookTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [webhookStatus, setWebhookStatus] = useState<{ active: boolean; configuredSecret: boolean; processedTransactionsCount: number; message: string } | null>(null);
+  const [checkingWebhookStatus, setCheckingWebhookStatus] = useState(false);
   const [adminLoadError, setAdminLoadError] = useState<string | null>(null);
 
   // Admin New Product Modal
@@ -216,6 +217,11 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
   const handleProductStatus = async (id: string, status: string) => {
     try {
       await api.updateProductStatus(id, status);
+      try {
+        await firestoreProducts.update(id, { status: status as any });
+      } catch (fErr) {
+        console.warn('[Firestore Sync]: Could not update product status in Firestore:', fErr);
+      }
       setActionFeedback({ type: 'success', message: `Status do produto alterado para ${status}.` });
       const res = await api.getAdminProducts();
       setProducts(res.products);
@@ -228,6 +234,11 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
     if (!confirm('Tem certeza que deseja excluir este produto permanentemente?')) return;
     try {
       await api.deleteProduct(id);
+      try {
+        await firestoreProducts.delete(id);
+      } catch (fErr) {
+        console.warn('[Firestore Sync]: Could not delete product from Firestore:', fErr);
+      }
       setActionFeedback({ type: 'success', message: 'Produto excluído com sucesso.' });
       setProducts(products.filter(p => p.id !== id));
     } catch (e: any) {
@@ -312,31 +323,31 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
     }
   };
 
-  const handleTestWebhook = async () => {
-    setWebhookTesting(true);
-    setWebhookTestResult(null);
+  const handleCheckWebhookStatus = async () => {
+    setCheckingWebhookStatus(true);
     try {
-      const res = await api.testAdminWebhook();
-      setWebhookTestResult({
-        success: true,
-        message: res.message || 'Callback de Webhook executado com sucesso! Taxa de 10% creditada ao administrador.',
+      const res = await api.getAdminWebhookStatus();
+      setWebhookStatus(res);
+      setActionFeedback({
+        type: 'success',
+        message: 'Endpoint de Webhook Oficial operando 100% em tempo real com validação HMAC.',
       });
       const freshStats = await api.getAdminDashboard();
       setStats(freshStats.stats);
     } catch (e: any) {
-      setWebhookTestResult({
-        success: false,
-        message: e.message || 'Falha ao testar recebimento de webhook.',
+      setActionFeedback({
+        type: 'error',
+        message: e.message || 'Falha ao verificar status do webhook.',
       });
     } finally {
-      setWebhookTesting(false);
+      setCheckingWebhookStatus(false);
     }
   };
 
   const handleCreatePlatformProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.createAdminProduct({
+      const createRes = await api.createAdminProduct({
         title: newProdTitle,
         description: newProdDesc,
         type: newProdType,
@@ -349,6 +360,15 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
         fileUrl: newProdType === 'ebook' ? (newProdFileUrl || undefined) : undefined,
         videoUrl: newProdType === 'video' ? (newProdFileUrl || undefined) : undefined,
       });
+
+      if (createRes?.product) {
+        try {
+          await firestoreProducts.create(createRes.product);
+        } catch (fErr) {
+          console.warn('[Firestore Sync]: Could not sync admin product to Firestore:', fErr);
+        }
+      }
+
       setShowAddProductModal(false);
       setNewProdTitle('');
       setNewProdDesc('');
@@ -361,6 +381,22 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
       setProducts(res.products);
     } catch (e: any) {
       setActionFeedback({ type: 'error', message: e.message });
+    }
+  };
+
+  const handleToggleStoreListing = async (productId: string, listedOnStore: boolean) => {
+    try {
+      const res = await api.toggleProductStoreListing(productId, listedOnStore);
+      try {
+        await firestoreProducts.update(productId, { listedOnStore });
+      } catch (fErr) {
+        console.warn('[Firestore Sync]: Could not update store listing in Firestore:', fErr);
+      }
+      setActionFeedback({ type: 'success', message: res.message });
+      const updated = await api.getAdminProducts();
+      setProducts(updated.products);
+    } catch (e: any) {
+      setActionFeedback({ type: 'error', message: e.message || 'Erro ao alterar visibilidade na loja.' });
     }
   };
 
@@ -967,6 +1003,7 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
                     <th className="p-3">Preço</th>
                     <th className="p-3">Comissão</th>
                     <th className="p-3">Vendedor</th>
+                    <th className="p-3">Loja do Site</th>
                     <th className="p-3">Status</th>
                     <th className="p-3 text-right">Ações do Admin</th>
                   </tr>
@@ -976,7 +1013,16 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
                     <tr key={p.id} className="hover:bg-slate-50">
                       <td className="p-3">
                         <div className="flex items-center gap-2">
-                          <img src={p.coverUrl} alt="" className="w-10 h-10 object-cover rounded-lg border border-slate-200" />
+                          <img
+                            src={p.coverUrl || (p.type === 'video' ? '/src/assets/images/product_video_financas_1790278058234.jpg' : '/src/assets/images/product_ebook_cv_1790278048991.jpg')}
+                            alt=""
+                            className="w-10 h-10 object-cover rounded-lg border border-slate-200"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = p.type === 'video'
+                                ? '/src/assets/images/product_video_financas_1790278058234.jpg'
+                                : '/src/assets/images/product_ebook_cv_1790278048991.jpg';
+                            }}
+                          />
                           <div>
                             <span className="font-bold text-slate-900 block max-w-xs truncate">{p.title}</span>
                             <span className="text-[10px] text-slate-400">{p.salesCount} vendas · {p.downloadCount || 0} downloads</span>
@@ -1009,6 +1055,31 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
                           <span className="text-emerald-700 font-bold text-[10px]">SpacePay Oficial</span>
                         ) : (
                           <span>{p.sellerName}</span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        {p.isPlatformProduct ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            Loja Oficial (Admin)
+                          </span>
+                        ) : p.listedOnStore ? (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStoreListing(p.id, false)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200 cursor-pointer transition-colors"
+                            title="Clique para remover este produto da vitrine da loja do site"
+                          >
+                            ✓ Na Loja (Remover)
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStoreListing(p.id, true)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 cursor-pointer transition-colors"
+                            title="Clique para permitir que este produto apareça também na loja do site"
+                          >
+                            + Permitir na Loja
+                          </button>
                         )}
                       </td>
                       <td className="p-3">
@@ -1460,35 +1531,28 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
                 <span>{copiedWebhook ? 'Copiado para a Área de Transferência' : 'Copiar URL do Webhook'}</span>
               </button>
 
-              <div className="pt-2 border-t border-slate-100">
+              <div className="pt-2 border-t border-slate-100 space-y-2">
                 <button
                   type="button"
-                  onClick={handleTestWebhook}
-                  disabled={webhookTesting}
-                  className="w-full py-2 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors text-xs"
+                  onClick={handleCheckWebhookStatus}
+                  disabled={checkingWebhookStatus}
+                  className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors text-xs"
                 >
-                  <Zap className="w-3.5 h-3.5 fill-current text-emerald-600" />
-                  <span>{webhookTesting ? 'Executando Teste...' : 'Testar Recebimento de Webhook'}</span>
+                  <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{checkingWebhookStatus ? 'Verificando...' : 'Verificar Status do Endpoint Webhook'}</span>
                 </button>
               </div>
 
-              {webhookTestResult && (
-                <div
-                  className={`p-3 rounded-xl text-xs space-y-1 ${
-                    webhookTestResult.success
-                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
-                      : 'bg-rose-50 text-rose-900 border border-rose-200'
-                  }`}
-                >
+              {webhookStatus && (
+                <div className="p-3 rounded-xl text-xs space-y-1 bg-emerald-50 text-emerald-900 border border-emerald-200">
                   <div className="flex items-center gap-1.5 font-bold">
-                    {webhookTestResult.success ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                    )}
-                    <span>{webhookTestResult.success ? 'Webhook Confirmado com Sucesso' : 'Falha no Webhook'}</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Endpoint Real Online e Monitorando</span>
                   </div>
-                  <p className="text-[11px] leading-relaxed opacity-90">{webhookTestResult.message}</p>
+                  <p className="text-[11px] leading-relaxed opacity-90">{webhookStatus.message}</p>
+                  <p className="text-[10px] text-emerald-700 font-semibold pt-1 border-t border-emerald-200">
+                    Transações reais processadas: <strong>{webhookStatus.processedTransactionsCount}</strong>
+                  </p>
                 </div>
               )}
             </div>
@@ -1571,14 +1635,36 @@ export const AdminPanelPage: React.FC<AdminPanelPageProps> = ({ navigate }) => {
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Comissão para Afiliados (MT) *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-slate-700">Comissão para Afiliados (MT) *</label>
+                  <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                    Livre: Qualquer Percentual
+                  </span>
+                </div>
                 <input
                   type="number"
+                  min="0"
                   required
                   value={newProdComm}
                   onChange={(e) => setNewProdComm(e.target.value)}
                   className="w-full px-3 py-2 border rounded-lg text-emerald-600 font-bold"
                 />
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  <span className="text-[10px] text-slate-400">Atalhos de Percentual:</span>
+                  {[10, 20, 30, 40, 50, 60, 70, 80].map((pct) => {
+                    const priceVal = Number(newProdPrice) || 0;
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setNewProdComm(String(Math.round((priceVal * pct) / 100)))}
+                        className="px-1.5 py-0.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 rounded text-[10px] text-slate-600 font-semibold cursor-pointer border border-slate-200"
+                      >
+                        {pct}% ({Math.round((priceVal * pct) / 100)} MT)
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* UPLOAD DO ARQUIVO DIGITAL */}

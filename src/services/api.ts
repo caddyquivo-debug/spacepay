@@ -165,19 +165,23 @@ export const api = {
     mimeType: string;
     publicUrl: string;
   }> {
-    // If progress is needed, use XMLHttpRequest
-    if (onProgress) {
-      return new Promise((resolve, reject) => {
+    // Attempt 1: Native FormData upload (fast and streaming via Multer)
+    try {
+      return await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('fileName', file.name);
+        formData.append('fileType', file.type);
 
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            onProgress(percent);
-          }
-        });
+        if (onProgress) {
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+              const percent = Math.round((e.loaded / e.total) * 100);
+              onProgress(percent);
+            }
+          });
+        }
 
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
@@ -197,7 +201,9 @@ export const api = {
           }
         });
 
-        xhr.addEventListener('error', () => reject(new Error('Erro de conexão durante o upload.')));
+        xhr.addEventListener('error', () => {
+          reject(new Error('Falha de conexão durante o upload via stream.'));
+        });
         xhr.addEventListener('abort', () => reject(new Error('Upload cancelado.')));
 
         xhr.open('POST', '/api/upload');
@@ -210,25 +216,48 @@ export const api = {
         }
         xhr.send(formData);
       });
-    } else {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await httpFetch('/api/upload', {
-        method: 'POST',
-        headers: (() => {
-          const h: Record<string, string> = {};
-          const u = localStorage.getItem('spacepay_user');
-          if (u) {
+    } catch (primaryErr: any) {
+      console.warn('[Upload FormData falhou, iniciando fallback Base64]:', primaryErr);
+
+      // Attempt 2: Base64 JSON fallback for resilient uploads in proxy/iframe environments
+      if (file.size <= 60 * 1024 * 1024) {
+        return await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          if (onProgress) onProgress(20);
+
+          reader.onload = async () => {
             try {
-              const p = JSON.parse(u);
-              if (p.email) h['x-user-email'] = p.email;
-            } catch {}
-          }
-          return h;
-        })(),
-        body: formData,
-      });
-      return parseJsonResponse(res, 'Erro no upload.');
+              if (onProgress) onProgress(60);
+              const dataUrl = reader.result as string;
+              const res = await httpFetch('/api/upload', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...getAuthHeaders(),
+                },
+                body: JSON.stringify({
+                  fileName: file.name,
+                  fileType: file.type,
+                  data: dataUrl,
+                }),
+              });
+              if (onProgress) onProgress(100);
+              const json = await parseJsonResponse(res, 'Falha no upload alternativo.');
+              resolve(json);
+            } catch (fallbackErr: any) {
+              reject(fallbackErr);
+            }
+          };
+
+          reader.onerror = () => {
+            reject(new Error(primaryErr.message || 'Falha ao ler o arquivo no dispositivo.'));
+          };
+
+          reader.readAsDataURL(file);
+        });
+      }
+
+      throw primaryErr;
     }
   },
 
@@ -295,6 +324,26 @@ export const api = {
       headers: getAuthHeaders(),
     });
     return parseJsonResponse(res, 'Erro ao carregar seus produtos.');
+  },
+
+  async updateMyProduct(
+    id: string,
+    updates: Partial<Product>
+  ): Promise<{ product: Product; message: string }> {
+    const res = await httpFetch(`/api/user/my-products/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(updates),
+    });
+    return parseJsonResponse(res, 'Erro ao atualizar produto.');
+  },
+
+  async deleteMyProduct(id: string): Promise<{ success: boolean; message: string }> {
+    const res = await httpFetch(`/api/user/my-products/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return parseJsonResponse(res, 'Erro ao excluir produto.');
   },
 
   async getMySales(): Promise<{
@@ -386,6 +435,15 @@ export const api = {
     return parseJsonResponse(res, 'Erro ao criar produto.');
   },
 
+  async toggleProductStoreListing(id: string, listedOnStore: boolean): Promise<{ product: Product; message: string }> {
+    const res = await httpFetch(`/api/admin/products/${id}/store-listing`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ listedOnStore }),
+    });
+    return parseJsonResponse(res, 'Erro ao atualizar visibilidade na loja.');
+  },
+
   async deleteProduct(id: string): Promise<{ success: boolean; message: string }> {
     const res = await httpFetch(`/api/admin/products/${id}`, {
       method: 'DELETE',
@@ -467,13 +525,11 @@ export const api = {
     return parseJsonResponse(res, 'Erro ao testar conectividade com NetShop.');
   },
 
-  async testAdminWebhook(orderId?: string): Promise<{ success: boolean; message: string; order?: Order }> {
-    const res = await httpFetch('/api/admin/netshop/test-webhook', {
-      method: 'POST',
+  async getAdminWebhookStatus(): Promise<{ active: boolean; configuredSecret: boolean; processedTransactionsCount: number; message: string }> {
+    const res = await httpFetch('/api/admin/netshop/webhook-status', {
       headers: getAuthHeaders(),
-      body: JSON.stringify({ orderId }),
     });
-    return parseJsonResponse(res, 'Erro ao testar processamento do webhook.');
+    return parseJsonResponse(res, 'Erro ao verificar status do webhook.');
   },
 
   // --- GEMINI AI ASSISTANT ---

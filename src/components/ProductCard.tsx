@@ -18,6 +18,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const { user } = useAuth();
 
+  const defaultCover = product.type === 'video'
+    ? '/src/assets/images/product_video_financas_1790278058234.jpg'
+    : '/src/assets/images/product_ebook_cv_1790278048991.jpg';
+
   return (
     <div className="group bg-white rounded-2xl border border-slate-200 hover:border-emerald-500/40 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col justify-between">
       <div>
@@ -27,16 +31,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           className="relative aspect-[4/3] bg-slate-100 overflow-hidden cursor-pointer"
         >
           <img
-            src={product.coverUrl}
+            src={product.coverUrl || defaultCover}
             alt={product.title}
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             onError={(e) => {
               // Fallback styling if image fails
               const target = e.currentTarget;
-              target.style.display = 'none';
-              const fallback = target.nextElementSibling as HTMLElement;
-              if (fallback) fallback.style.display = 'flex';
+              target.src = defaultCover;
             }}
           />
           {/* Fallback container */}

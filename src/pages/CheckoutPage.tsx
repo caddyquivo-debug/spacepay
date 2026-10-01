@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Product, Order, PaymentMethod } from '../types/index.ts';
 import { api } from '../services/api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
+import { firestoreOrders } from '../lib/firestoreOrders.ts';
 import {
   BookOpen,
   Video,
@@ -135,6 +136,9 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ slug, navigate }) =>
       setActiveOrder(result.order);
       setPaymentInstructions(result.payment?.instructions || 'Transação iniciada no gateway oficial.');
       
+      // Sync order to Firestore
+      firestoreOrders.save(result.order).catch((err) => console.warn('[Firestore Order Sync]:', err));
+
       const hosted = result.payment?.hostedUrl || result.payment?.redirectUrl;
       if (hosted) {
         setHostedPaymentUrl(hosted);
@@ -162,7 +166,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ slug, navigate }) =>
       if (verifyRes.status === 'completed' || verifyRes.success) {
         setPaymentCompleted(true);
         setIsPollingStatus(false);
-        if (verifyRes.order) setActiveOrder(verifyRes.order);
+        if (verifyRes.order) {
+          setActiveOrder(verifyRes.order);
+          firestoreOrders.save(verifyRes.order).catch((err) => console.warn('[Firestore Order Complete Sync]:', err));
+        }
       } else {
         setCheckFeedback('Ainda aguardando confirmação no telemóvel. Verifique seu celular.');
       }
@@ -182,7 +189,10 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ slug, navigate }) =>
           clearInterval(interval);
           setIsPollingStatus(false);
           setPaymentCompleted(true);
-          if (verifyRes.order) setActiveOrder(verifyRes.order);
+          if (verifyRes.order) {
+            setActiveOrder(verifyRes.order);
+            firestoreOrders.save(verifyRes.order).catch((err) => console.warn('[Firestore Order Polling Sync]:', err));
+          }
         }
       } catch {
         // Silent polling interval retry
@@ -282,9 +292,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ slug, navigate }) =>
 
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-left flex items-center gap-4">
             <img
-              src={product.coverUrl}
+              src={product.coverUrl || (product.type === 'video' ? '/src/assets/images/product_video_financas_1790278058234.jpg' : '/src/assets/images/product_ebook_cv_1790278048991.jpg')}
               alt={product.title}
               className="w-16 h-16 object-cover rounded-xl border border-slate-200"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = product.type === 'video'
+                  ? '/src/assets/images/product_video_financas_1790278058234.jpg'
+                  : '/src/assets/images/product_ebook_cv_1790278048991.jpg';
+              }}
             />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-bold text-emerald-700 uppercase">
@@ -706,9 +721,14 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({ slug, navigate }) =>
             {product && (
               <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
                 <img
-                  src={product.coverUrl}
+                  src={product.coverUrl || (product.type === 'video' ? '/src/assets/images/product_video_financas_1790278058234.jpg' : '/src/assets/images/product_ebook_cv_1790278048991.jpg')}
                   alt={product.title}
                   className="w-16 h-16 object-cover rounded-xl border border-slate-100"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = product.type === 'video'
+                      ? '/src/assets/images/product_video_financas_1790278058234.jpg'
+                      : '/src/assets/images/product_ebook_cv_1790278048991.jpg';
+                  }}
                 />
                 <div className="min-w-0 flex-1">
                   <span className="text-[10px] font-bold text-emerald-700 uppercase">
